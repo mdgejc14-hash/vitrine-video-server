@@ -64,6 +64,9 @@ def call(method, path, body=None, headers=None, form=None):
     url = BASE + path
     data = None
     hdrs = dict(headers or {})
+    # Cloudflare bloque l'User-Agent par défaut de Python urllib (403) :
+    # UA explicite et honnête du coureur de tests.
+    hdrs.setdefault("User-Agent", "vitrine-video-e2e/1.0")
     if form is not None:
         data = form.encode()
         hdrs.setdefault("content-type", "application/x-www-form-urlencoded")
