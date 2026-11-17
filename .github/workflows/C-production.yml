@@ -114,19 +114,27 @@ jobs:
             echo "$k=$v" >> "$GITHUB_OUTPUT"
           done
 
-      - name: Provision D1 production + migrations + secrets
+      - name: Provision D1 production + migrations
         if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          PROD_DEVICE_ID_HMAC_SECRET: ${{ steps.secrets.outputs.PROD_DEVICE_ID_HMAC_SECRET }}
-          PROD_ADMIN_METRICS_TOKEN: ${{ steps.secrets.outputs.PROD_ADMIN_METRICS_TOKEN }}
-        run: ./scripts/provision.sh --apply-config --only production
+        run: ./scripts/provision.sh --only production
 
       - name: Déploiement du Worker production
         if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy --env production
+
+      # Secrets APRÈS le déploiement (un secret exige un Worker existant).
+      # PAS de SIMULATION_SECRET en production.
+      - name: Secrets production au Worker
+        if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PROD_DEVICE_ID_HMAC_SECRET: ${{ steps.secrets.outputs.PROD_DEVICE_ID_HMAC_SECRET }}
+          PROD_ADMIN_METRICS_TOKEN: ${{ steps.secrets.outputs.PROD_ADMIN_METRICS_TOKEN }}
+        run: ./scripts/provision.sh --secrets --only production
 
       - name: "Vérification post-déploiement (/health production)"
         if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'

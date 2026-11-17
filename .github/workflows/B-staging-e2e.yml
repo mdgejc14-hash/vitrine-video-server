@@ -134,20 +134,28 @@ jobs:
       # Provision D1 STAGING UNIQUEMENT (création si absente — jamais de
       # suppression), migrations non destructives, secrets au Worker.
       # ------------------------------------------------------------------
-      - name: Provision D1 staging + migrations + secrets
+      - name: Provision D1 staging + migrations
         if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          DEVICE_ID_HMAC_SECRET: ${{ steps.secrets.outputs.DEVICE_ID_HMAC_SECRET }}
-          ADMIN_METRICS_TOKEN: ${{ steps.secrets.outputs.ADMIN_METRICS_TOKEN }}
-          SIMULATION_SECRET: ${{ steps.secrets.outputs.SIMULATION_SECRET }}
-        run: ./scripts/provision.sh --apply-config --only staging
+        run: ./scripts/provision.sh --only staging
 
       - name: Déploiement du Worker staging
         if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy
+
+      # Secrets APRÈS le premier déploiement : un secret ne peut être posé
+      # que sur un Worker existant (wrangler secret put --name).
+      - name: Secrets staging au Worker
+        if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          DEVICE_ID_HMAC_SECRET: ${{ steps.secrets.outputs.DEVICE_ID_HMAC_SECRET }}
+          ADMIN_METRICS_TOKEN: ${{ steps.secrets.outputs.ADMIN_METRICS_TOKEN }}
+          SIMULATION_SECRET: ${{ steps.secrets.outputs.SIMULATION_SECRET }}
+        run: ./scripts/provision.sh --secrets --only staging
 
       # ------------------------------------------------------------------
       # E2E réseau : scénarios rejoués en HTTP réel (terminaux de test
