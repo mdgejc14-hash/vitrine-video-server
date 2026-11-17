@@ -13,16 +13,20 @@ désactivée) est **construit, typé, linté et prouvé** :
 exécutés**, un rejeu **HTTP réel** des 15 scénarios contre un Worker
 vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
 
-**Mise à jour 17/11 (jetons fondateur fournis)** :
-- dépôt GitHub **créé et poussé** : `mdgejc14-hash/vitrine-video-server`
-  (public), `main` à jour ;
-- bases D1 **créées et migrées à distance** (7 tables métier vérifiées
-  dans chacune) ;
-- secret Actions `CLOUDFLARE_API_TOKEN` **déposé** (chiffré NaCl) ;
-- **reste UN seul verrou** : le jeton Cloudflare fourni couvre D1 mais
-  **pas « Workers Scripts:Edit »** → le déploiement du Worker lui-même
-  reste bloqué (§5). Aucune ressource existante n'a été touchée
-  (ancien worker vérifié vivant v0.9.1-d42.23, anciennes D1 intactes).
+**Mise à jour 17/11 au matin (instruction maîtresse de reprise)** :
+- audit : local = distant, `main` = 04c9676 ; runs A/B/D conformes ;
+- documentation **alignée sur la planche officielle des 14 écrans**
+  (PRODUCT_UI_REFERENCE.md réécrit à l'identique de la planche ;
+  BACKEND_CONTRACT, README, OPENAPI corrigés) ;
+- e2e distant : variante stricte du Test 6 ajoutée (gratuits épuisés
+  avant achat → 6 payants puis 7e refusé) + réalité « 9 si gratuits
+  restants » ; pré-vérification HTTP locale 15/15 ;
+- runs B #7 et B #8 : la sonde du jeton du secret Actions renvoie
+  **403** sur le dépôt de script ; batterie de diagnostic exécutée :
+  le jeton a Workers Scripts **Read** mais pas **Edit** (carte
+  identique à l'ancien jeton) → **déploiement toujours BLOQUÉ** (§5) ;
+- **reste UN seul verrou** : « Workers Scripts:Edit » sur le jeton du
+  secret, ou mise à jour du secret avec le jeton corrigé.
 
 ## 2. Verdicts par exigence
 
@@ -119,24 +123,29 @@ sont consommés avant l'achat dans ce banc).
   **aucune modification** — audit lecture seule Phase 1, jamais
   référencées dans la config.
 
-## 5. Blocages restants (UNE action fondateur)
+## 5. Blocage restant (UNE action fondateur) — diagnostic du 17/11 matin
 
-Le dépôt existe, le secret Actions est en place, les D1 sont créées et
-migrées, la CI est verte. **Il ne manque qu'une permission** :
+Tout est prêt (dépôt, D1 migrées, CI verte, documentation alignée) et
+**vérifié par exécution** : le déploiement échoue uniquement sur
+`PUT …/workers/scripts` → 403 « No access to the specified resource ».
 
-1. **Ajouter « Workers Scripts: Edit » au jeton Cloudflare fourni**
-   (tableau de bord CF → My Profile → API Tokens → modifier le jeton →
-   ajouter la permission *Account · Workers Scripts · Edit*). La valeur
-   du jeton reste identique : le secret Actions déjà déposé devient
-   immédiatement opérationnel, sans nouvelle configuration.
-2. Ensuite : relancer le workflow **B** (staging + E2E réseau 15
-   scénarios) puis le workflow **C** (production, confirmation
-   « DEPLOYER », paiements désactivés) depuis l'onglet Actions.
+**La batterie de diagnostic (runs B #7 et B #8 sur le jeton du secret
+Actions) montre Workers Scripts Read sans Edit** — carte identique à
+l'ancien jeton. Trois causes possibles et leur remède (sans créer de
+nouveau jeton) :
 
-Historique des verrous levés le 17/11 : création de dépôt (403 avec
-l'ancien PAT → nouveau jeton fourni, 201) ; token CF inaccessible →
-jeton fourni (D1 OK, deploy non) ; `database_id` placeholders → UUIDs
-réels committés (0be90e9).
+1. **Permission non enregistrée** : CF → My Profile → API Tokens → le
+   jeton → vérifier « Workers Scripts — Edit » (portée : le compte) et
+   ENREGISTRER. Valeur inchangée → relancer B.
+2. **Nouveau jeton non reporté dans le secret** : si un nouveau jeton a
+   été créé, mettre à jour le secret `CLOUDFLARE_API_TOKEN`
+   (Settings → Secrets and variables → Actions) → relancer B.
+3. **Restriction IP** : la retirer (ou autoriser les exécutants
+   GitHub Actions) → relancer B.
+
+Ensuite : workflow **B** (staging + E2E distant 15 scénarios) puis, après
+présentation du bilan staging, workflow **C** avec la confirmation
+explicite « DEPLOYER » (production, paiements désactivés).
 
 **Hygiène des jetons** : les deux jetons ont été collés en clair dans
 le canal de discussion. Après validation finale de la mission, il est

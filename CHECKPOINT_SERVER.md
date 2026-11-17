@@ -1,10 +1,12 @@
 # CHECKPOINT_SERVER.md — Point de contrôle (référence de reprise)
 
 > Mission : backend Cloudflare VITRINE VIDÉO LITE (serveur uniquement).
-> Date du point : **17/11/2026** (nuit, mise à jetons fondateur fournis).
-> État : **Phases 1-6 terminées et prouvées ; dépôt GitHub créé + poussé ;
-> D1 distantes créées + migrées ; CI A/B/D verte ; déploiement Worker
-> BLOQUÉ par l'unique permission « Workers Scripts:Edit » manquante.**
+> Date du point : **17/11/2026** (matin, après instruction maîtresse de
+> reprise). État : **documentation alignée sur la planche officielle des
+> 14 écrans ; tests locaux 64/64 + pré-vérification HTTP 15/15 ; CI
+> A #7/#8 et B #7/#8 vertes ; déploiement Worker TOUJOURS BLOQUÉ : le
+> jeton du secret Actions n'a pas « Workers Scripts:Edit » (diagnostiqué
+> par batterie d'API, deux runs consécutifs).**
 
 ## Comptes EXACTS au point de contrôle
 
@@ -65,19 +67,45 @@
 - `wrangler dev` n'applique PAS les migrations localement →
   `npm run dev` = `d1 migrations apply --local` puis `wrangler dev`.
 
-## Blocage restant (UNIQUE)
+## Blocage restant (UNIQUE) — diagnostic précis du 17/11 matin
 
-1. **Le jeton Cloudflare fourni n'a pas la permission
-   « Workers Scripts:Edit »** (PUT script → 403, PUT secret → 403 ;
-   D1 pleinement opérationnel en revanche). Le déploiement du Worker
-   staging puis production est donc impossible avec ce jeton.
-   **Action fondateur** : ajouter la permission au jeton (même valeur —
-   le secret Actions devient opérationnel immédiatement), puis relancer
-   les workflows B puis C. Tout le reste est prêt et prouvé.
-2. Ressources existantes : **rien n'a été touché** — ancien worker
-   vérifié vivant (`/health` → v0.9.1-d42.23, 8 tables), anciennes D1
-   (`vitrine-video-db`, `vitrine-video-db-preview`) intactes à
-   l'inventaire, aucune écriture dessus.
+**Opération bloquée** : `PUT /accounts/d7dac13…/workers/scripts/{nom}`
+(dépôt du script Worker — utilisé par `wrangler deploy`).
+**Réponse** : HTTP 403 « No access to the specified resource ».
+**Droit manquant** : Account → **Workers Scripts → Edit**.
+**Méthodologie prouvée** : un jeton autorisé reçoit 400 sur cette même
+sonde (convention CF vérifiée par exécution : requête autorisée mais
+invalide → 400, cf. test D1 nom vide) ; 403 = refus d'autorisation.
+
+**Batterie exécutée sur le jeton du secret Actions** (runs B #7 07:02 UTC
+et B #8 07:06 UTC — codes HTTP seuls, aucune valeur affichée) :
+
+| Opération | Code | Conclusion |
+|---|---|---|
+| GET /workers/scripts | 200 | Workers Scripts **Read** présent |
+| PUT /workers/scripts (sonde) | **403** | Workers Scripts **Edit** ABSENT |
+| GET /workers/subdomain | 403 | Subdomain read absent |
+| GET /workers/services | 200 | lecture services OK |
+| GET /d1/database | 200 | D1 opérationnel |
+| GET /accounts | 200 | compte unique d7dac13… (bon ciblage) |
+
+Carte IDENTIQUE à l'ancien jeton : soit la modification de permissions
+n'a pas été enregistrée, soit le secret Actions contient toujours
+l'ancienne valeur.
+
+**Actions fondateur (au choix, sans créer de nouveau jeton)** :
+1. Vérifier dans CF (My Profile → API Tokens → le jeton) que la
+   permission **Workers Scripts = Edit** (portée : le compte) est
+   bien ENREGISTRÉE. Si le jeton a été modifié en place, sa valeur est
+   inchangée : relancer simplement le workflow B.
+2. Si un NOUVEAU jeton a été créé, mettre à jour le secret Actions
+   `CLOUDFLARE_API_TOKEN` avec sa valeur (Settings → Secrets → Actions).
+3. Vérifier l'absence de restriction IP sur le jeton (les exécutants
+   GitHub Actions doivent être autorisés).
+
+Ressources existantes : **rien n'a été touché** — ancien worker vérifié
+vivant (`/health` → v0.9.1-d42.23), anciennes D1 intactes à
+l'inventaire, aucune écriture dessus.
 
 ## Reprise — prochaine action
 
