@@ -19,12 +19,22 @@
 //      - Si aucun lot éligible à l'étape 2 : HTTP 402, aucun débit.
 // Deux demandes concurrentes sur le dernier crédit ne peuvent donc JAMAIS
 // aboutir à deux débits durables.
+//
+// CONVERGENCE DES COURSES MÊME CLÉ (correctif 17/11) : sous concurrence,
+// des requêtes jumelles peuvent consommer les crédits visibles AVANT que
+// l'INSERTion du gagnant ne soit visible (séquence observée : 3 débits
+// sérialisés → 0 crédit visible → 402 parasites AVANT l'insertion). Le
+// chemin d'échec du débit re-vérifie donc l'existence d'une autorisation
+// même clé de façon BORNÉE (5 tentatives, 25 ms) : si le gagnant insère
+// entre-temps, la requête devient un replay (200) ; sinon le 402 est
+// authentique. Les courses à clés DIFFÉRENTES ne convergent jamais :
+// la compétition sur le dernier crédit reste 1×201 + N×402.
 
 import { toIso, Clock } from "../clock/clock";
 import { ApiError } from "../security/errors";
 import { PLANS, publicPlan } from "../catalog/plans";
 import { debitOneCredit, creditBack, insertAuthorization } from "../repositories/grants";
-import { findByIdempotencyKey } from "../repositories/exports";
+import { findByIdempotencyKey, ExportAuthorizationRow } from "../repositories/exports";
 import { recordDeviceEvent } from "../repositories/events";
 import { CreditService, Balance } from "./creditService";
 
@@ -56,24 +66,7 @@ export class ExportService {
     // 1) Replay : la même clé retrouve TOUJOURS l'autorisation initiale.
     const existing = await findByIdempotencyKey(this.db, terminalId, idempotencyKey);
     if (existing !== null) {
-      await recordDeviceEvent(this.db, {
-        id: crypto.randomUUID(),
-        terminalId,
-        eventType: "export_replayed",
-        occurredAt: toIso(this.clock.now()),
-        metadata: { idempotency_key: idempotencyKey },
-      });
-      const balance = await this.credits.getBalance(terminalId);
-      return {
-        replay: true,
-        authorization: {
-          id: existing.id,
-          status: existing.status,
-          authorized_at: existing.authorized_at,
-          idempotency_key: existing.idempotency_key,
-        },
-        credits_after: balance,
-      };
+      return this.replayOf(terminalId, existing);
     }
 
     // 2) Réservation atomique d'un crédit.
@@ -84,7 +77,15 @@ export class ExportService {
     });
 
     if (reservation === null) {
-      // Aucun crédit utilisable : refus + offres officielles.
+      // Aucun crédit utilisable… OU course même clé : des requêtes
+      // jumelles ont pu épuiser les crédits visibles juste avant que
+      // l'autorisation du gagnant ne soit insérée. Re-vérification
+      // BORNÉE : si elle apparaît, replay ; sinon refus authentique.
+      const raced = await this.waitForRacedAuthorization(terminalId, idempotencyKey);
+      if (raced !== null) {
+        return this.replayOf(terminalId, raced);
+      }
+      // Refus authentique : offres officielles.
       throw new ApiError("INSUFFICIENT_CREDITS", "Aucun crédit utilisable.", {
         plans: PLANS.map(publicPlan),
       });
@@ -125,5 +126,55 @@ export class ExportService {
       },
       credits_after: balance,
     };
+  }
+
+  /** Réponse de replay (même clé) : autorisation d'origine, aucun débit. */
+  private async replayOf(
+    terminalId: string,
+    existing: ExportAuthorizationRow,
+  ): Promise<AuthorizeResult> {
+    await recordDeviceEvent(this.db, {
+      id: crypto.randomUUID(),
+      terminalId,
+      eventType: "export_replayed",
+      occurredAt: toIso(this.clock.now()),
+      metadata: { idempotency_key: existing.idempotency_key },
+    });
+    const balance = await this.credits.getBalance(terminalId);
+    return {
+      replay: true,
+      authorization: {
+        id: existing.id,
+        status: existing.status,
+        authorized_at: existing.authorized_at,
+        idempotency_key: existing.idempotency_key,
+      },
+      credits_after: balance,
+    };
+  }
+
+  /**
+   * Convergence bornée des courses même clé : le gagnant insère son
+   * autorisation quelques millisecondes après son débit ; les requêtes
+   * dont le débit a échoué (0 crédit visible) re-vérifient donc un
+   * nombre LIMITÉ de fois avant de conclure à un refus authentique.
+   * Cinq tentatives espacées de 25 ms suffisent largement (insertion =
+   * une instruction D1). Ce chemin n'existe QUE dans le cas d'échec de
+   * débit : aucun coût dans le parcours nominal.
+   */
+  private async waitForRacedAuthorization(
+    terminalId: string,
+    idempotencyKey: string,
+    attempts = 5,
+    delayMs = 25,
+  ): Promise<ExportAuthorizationRow | null> {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const existing = await findByIdempotencyKey(this.db, terminalId, idempotencyKey);
+      if (existing !== null) return existing;
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    return null;
   }
 }
