@@ -86,11 +86,36 @@ jobs:
           done
 
       # ------------------------------------------------------------------
+      # Sonde de droits : le token sait-il DÉPLOYER (Workers Scripts:Edit) ?
+      # PUT sans module : 400 = droit présent (rejet de validation, aucun
+      # effet), 403 = droit absent. Sans ce droit : D1 reste provisionnable
+      # mais le déploiement et l'E2E réseau sont sautés proprement.
+      # ------------------------------------------------------------------
+      - name: "Sonde : droit de déploiement Workers"
+        id: probe
+        if: env.CF_TOKEN != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/accounts/d7dac13da931423a19812f6d9116bd47/workers/scripts/vvl-perm-probe" \
+            -d '{"main_module":"index.js","compatibility_date":"2025-09-06"}')
+          if [[ "$CODE" != "403" && "$CODE" != "401" && "$CODE" != "000" ]]; then
+            echo "can_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "droit de déploiement présent (sonde HTTP $CODE)"
+          else
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "droit de déploiement ABSENT (sonde HTTP $CODE) — déploiement sauté"
+          fi
+
+      # ------------------------------------------------------------------
       # Provision D1 STAGING UNIQUEMENT (création si absente — jamais de
       # suppression), migrations non destructives, secrets au Worker.
       # ------------------------------------------------------------------
       - name: Provision D1 staging + migrations + secrets
-        if: env.CF_TOKEN != ''
+        if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           DEVICE_ID_HMAC_SECRET: ${{ steps.secrets.outputs.DEVICE_ID_HMAC_SECRET }}
@@ -99,7 +124,7 @@ jobs:
         run: ./scripts/provision.sh --apply-config --only staging
 
       - name: Déploiement du Worker staging
-        if: env.CF_TOKEN != ''
+        if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy
@@ -110,7 +135,7 @@ jobs:
       # exactes 24 h / 30 j) : validés par l'étape locale (FixedClock).
       # ------------------------------------------------------------------
       - name: E2E staging (scénarios HTTP)
-        if: env.CF_TOKEN != ''
+        if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
         env:
           BASE_URL: ${{ inputs.base_url || 'https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev' }}
           SIMULATION_SECRET: ${{ steps.secrets.outputs.SIMULATION_SECRET }}
@@ -125,5 +150,5 @@ jobs:
         if: always()
         run: |
           echo "## B — staging" >> $GITHUB_STEP_SUMMARY
-          echo "- Déploiement : ${{ env.CF_TOKEN != '' && 'effectué' || 'SAUTÉ (CLOUDFLARE_API_TOKEN absent) — tests locaux seulement' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Déploiement : ${{ steps.probe.outputs.can_deploy == 'true' && 'effectué' || 'SAUTÉ (token absent ou sans droit Workers Scripts:Edit) — qualité locale seulement' }}" >> $GITHUB_STEP_SUMMARY
           echo "- Qualité locale : lint + typecheck + 15 scénarios" >> $GITHUB_STEP_SUMMARY
