@@ -144,7 +144,26 @@ jobs:
         if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx wrangler deploy
+        run: |
+          # Premier dépôt : l'activation workers.dev peut échouer avec le
+          # code 10007 (le script vient d'être créé sans déploiement
+          # actif) — diagnostic puis retentative.
+          if ! npx wrangler deploy; then
+            echo "== Diagnostic après le premier dépôt =="
+            ACC=d7dac13da931423a19812f6d9116bd47
+            H="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+            echo "-- scripts visibles --"
+            curl -s -H "$H" "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts" \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); print([s.get("id") for s in d.get("result",[])])'
+            echo "-- subdomain du compte --"
+            curl -s -w "\nHTTP:%{http_code}\n" -H "$H" "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/subdomain"
+            echo "-- activation workers.dev du script --"
+            curl -s -w "\nHTTP:%{http_code}\n" -X PUT -H "$H" -H "Content-Type: application/json" \
+              -d '{"enabled":true}' "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/vitrine-video-lite-api-staging/subdomain"
+            echo "-- retentative de déploiement --"
+            sleep 10
+            npx wrangler deploy
+          fi
 
       # Secrets APRÈS le premier déploiement : un secret ne peut être posé
       # que sur un Worker existant (wrangler secret put --name).
