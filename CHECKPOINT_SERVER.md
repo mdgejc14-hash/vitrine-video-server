@@ -1,13 +1,14 @@
 # CHECKPOINT_SERVER.md — Point de contrôle (référence de reprise)
 
 > Mission : backend Cloudflare VITRINE VIDÉO LITE (serveur uniquement).
-> Date du point : **17/11/2026** (matinée, HEAD `4536bc79ba01742b786eefd8eaee45b5d78bbd25`).
-> État : **STAGING DÉPLOYÉ ET PROUVÉ** — Worker
-> `vitrine-video-lite-api-staging` en ligne (workers.dev), D1 dédiée
-> connectée (7 tables), secrets posés, **15/15 scénarios : 12 PASS en
-> réseau réel + 3 LOCAL (FixedClock), 0 FAIL** (runs B #17 et B #18).
-> Production : **en attente de la décision du fondateur** (confirmation
-> explicite « DEPLOYER » requise — workflow C jamais déclenché).
+> Date du point : **17/11/2026** — **MISSION SERVEUR TERMINÉE**.
+> État : **PRODUCTION DÉPLOYÉE ET VÉRIFIÉE** — Workers
+> `vitrine-video-lite-api-staging` (E2E distant 15/15, runs B #17/#18)
+> et `vitrine-video-lite-api` (production, paiements désactivés,
+> run C #1) en ligne ; D1 dédiées connectées (7 tables métier chacune,
+> vérifiées nom par nom) ; **21 contrôles HTTP réels PASS sur la
+> production** ; simulation → 404 SIMULATION_DISABLED (preuve réelle).
+> CinetPay : volontairement différé à la phase finale du projet global.
 
 ## Comptes EXACTS au point de contrôle
 
@@ -25,12 +26,12 @@
 | Scripts | **2** (`provision.sh`, `e2e-runner.sh`), syntaxe bash + Python embarqué validées |
 | Migrations SQL | **1** (`0001_init.sql`, 16 commandes, 7 tables) |
 | Commits Git (local = distant) | **17 commits**, `main` = `4536bc79ba01742b786eefd8eaee45b5d78bbd25` |
-| Runs CI (derniers, SHA `4536bc7`) | **A #16 ✓ · B #18 ✓ (déploiement complet + E2E distant) · D #3 ✓** artefact · C : jamais déclenché |
+| Runs CI (derniers) | **A #16 ✓ · B #18 ✓ (staging complet) · C #1 ✓ (production complète) · D #4 ✓** (artefact final) |
 | Preuve anti-course | scenario02 complet **×15 verts** après correctif (105 exécutions) |
 | Dépôt GitHub | **créé** `mdgejc14-hash/vitrine-video-server` (public) |
 | D1 distantes | staging `44694796-…812d`, production `17e6a5cf-…7fa2` — 7 tables métier vérifiées chacune |
-| CI GitHub (cumuls) | A : 15/16 succès (seul échec #9 — course corrigée `3e0845d`) · B : 10/18, **derniers #17-#18 = déploiements complets** (échecs antérieurs : défauts de workflow puis de première exécution réelle, tous corrigés) · D : 3/3 + artefacts · C : non déclenché (réservé fondateur) |
-| Secret Actions | `CLOUDFLARE_API_TOKEN` (chiffré) — jeton avec Workers:Edit + Workers Scripts:Edit ; déploiement prouvé (B #17/#18) |
+| CI GitHub (cumuls) | A : 15/16 succès (seul échec #9 — course corrigée `3e0845d`) · B : 10/18, **derniers #17-#18 = déploiements complets** (échecs antérieurs corrigés) · **C : 1/1 (production complète)** · D : 4/4 + artefacts |
+| Secret Actions | `CLOUDFLARE_API_TOKEN` (chiffré) — jeton avec Workers:Edit + Workers Scripts:Edit ; déploiements prouvés (B #17/#18, C #1) |
 
 ### Répartition des 15 scénarios (tous exécutés)
 
@@ -86,6 +87,50 @@
 - **B #18** : second déploiement complet et idempotent sur le SHA final
   `4536bc79ba01742b786eefd8eaee45b5d78bbd25` — répétabilité prouvée
   (même chaîne, E2E 15/15 à nouveau)
+
+## DÉPLOIEMENT PRODUCTION — RÉUSSI (run C #1, 17/11 08:38 UTC)
+
+- **Autorisation** : « DEPLOYER » explicite du fondateur (instruction
+  finale du 17/11) ; garde `confirm=DEPLOYER` du workflow satisfaite
+- **Worker** : `vitrine-video-lite-api` —
+  `https://vitrine-video-lite-api.mdgejcinfluence.workers.dev`
+- **SHA déployé** : `4a586dafe187ee767aa22a39bc9ea264642cf694`
+  (runtime identique au staging vérifié : diff `4536bc7..4a586da` =
+  documents + commentaires seuls, prouvé par `git diff`)
+- **D1 production** : `vitrine-video-lite-production-db`
+  (`17e6a5cf-788b-4e70-a3a1-bf5ad0167fa2`) — connectée ; **7 tables
+  métier vérifiées nom par nom** via l'API D1 : terminals,
+  credit_grants, payments, export_authorizations,
+  payment_webhook_events, device_events, rate_limit_counters
+- **Secrets production** (noms seuls, valeurs jamais lues) :
+  `DEVICE_ID_HMAC_SECRET`, `ADMIN_METRICS_TOKEN` — générés par openssl
+  dans CI, indépendants des jetons Cloudflare/GitHub ; **aucun
+  SIMULATION_SECRET** en production
+- **Paiements** : `PAYMENT_MODE=disabled`, `CINETPAY_ENABLED=false`
+  (assertions pré-déploiement + /health réel) ; initiate → 503
+  `PAYMENT_PROVIDER_NOT_CONFIGURED` — aucune transaction possible
+- **Simulation** : `POST /__test__/payments/settle` → **404
+  SIMULATION_DISABLED** (requête HTTP réelle sur la production)
+- **Contrôles HTTP réels : 21/21 PASS** — santé (A1-A4), disponibilité
+  + D1 (B1-B2), plans (C1), simulation (D1), bootstrap 3 crédits une
+  seule fois (E1-E3), /terminals/me (F1), idempotence export (G1-G2),
+  épuisement + 402 + offres (H1-H2), initiate refusé (I1), webhook
+  rejeté (J1), métriques 401 sans token (K1), routes interdites 404
+  (L1 : comptes/promos/parrainage/vidéos/briefs)
+- **Terminaux de test** (données additives, marquées, réversibles —
+  aucune donnée réelle) : `e2e-prod-verif-finale-1711` et `-1711b`
+  (ANDROID_ID factices uuid5, préfixe explicite)
+- **Anciennes ressources** : worker `vitrine-video-api` vérifié vivant
+  (v0.9.1-d42.23), anciennes D1 intactes à l'inventaire — rien touché
+
+## Clôture de la mission serveur
+
+Tous les critères de l'instruction finale du 17/11 sont satisfaits :
+Worker production réellement déployé · C #1 vert · /health 200 ·
+/ready 200 + D1 production + 7 tables · secrets configurés et protégés ·
+paiements strictement désactivés · simulation 404 SIMULATION_DISABLED ·
+contrôles fonctionnels et sécurité validés · CHECKPOINT et REPORT à
+jour · preuves archivées (runs, SHA, statuts HTTP, sorties expurgées).
 - Chemin CI complet prouvé : sonde → provision → déploiement → secrets →
   attente /health → E2E réseau
 - Défauts corrigés en route (chacun prouvé par exécution) : f-string
@@ -150,18 +195,28 @@ le gagnant insère, 402 authentique sinon. Les courses à clés différentes
 restent 1×201 + N×402 (test « dernier crédit » inchangé et vert).
 **Preuve** : scenario02 ×15 runs verts + A #10 vert.
 
-## Reprise — prochaine action
+## Reprise — mission serveur TERMINÉE
 
-- **Production** : attendre la confirmation explicite « DEPLOYER » du
-  fondateur (décision lui appartient), puis onglet Actions → workflow
-  **C** (PAYMENT_MODE=disabled, CINETPAY_ENABLED=false, gardes
-  pré/post-déploiement), puis workflow **D** pour le checkpoint final.
-  Ne rien relancer d'inutile : le staging est sain sur `main` =
-  `4536bc79ba01742b786eefd8eaee45b5d78bbd25`.
-- **Historique CI utile** : A 15/16 (seul #9 FAIL — course corrigée
+- **Rien à reprendre côté serveur** : production et staging déployés,
+  vérifiés, documentés ; `main` propre et synchronisé.
+- **Historique CI complet** : A 15/16 (seul #9 FAIL — course corrigée
   `3e0845d`) ; B #1-#4 (défauts workflow : heredocs/sonde/bits), B
   #5-#12 ✓ (tests réels, déploiement sauté — jeton sans Edit à
   l'époque), B #13-#16 (première exécution réelle : f-string,
   --account-id wrangler 4, secrets après déploiement, code 10007,
   propagation workers.dev, User-Agent), **B #17-#18 ✓ complets** ;
-  D #1-#3 ✓ (artefacts checkpoint-1/2/3).
+  **C #1 ✓ complet (production)** ; D #1-#4 ✓ (artefacts checkpoint).
+
+## Phase suivante (hors périmètre serveur — décision fondateur)
+
+1. **Intégration CinetPay** (fin du projet global) : clés apikey/site_id
+   réelles fournies par le fondateur ; `CINETPAY_ENABLED=true` +
+   `PAYMENT_MODE=cinetpay` (wrangler.jsonc production) ; secrets
+   `CINETPAY_API_KEY`/`CINETPAY_SITE_ID` via `wrangler secret put` ;
+   revalidation par paiement test réel + webhook signé. Le client
+   `/v2/payment/check` et toutes les vérifications
+   (résultat/montant/devise/site, idempotence, FAILED définitif) sont
+   déjà implémentés et validés au point d'injection.
+2. **Assemblage** avec l'application Android et les 20 gabarits
+   (périmètres interdits au serveur — jamais entamés dans cette
+   mission).

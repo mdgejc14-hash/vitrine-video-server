@@ -1,7 +1,8 @@
 # REPORT_SERVER_FINAL.md — Rapport final du backend VITRINE VIDÉO LITE
 
 > Mission reçue le 16/11/2026 (serveur uniquement, frontière Android
-> absolue). Rapport établi le 17/11/2026.
+> absolue). **Rapport final établi le 17/11/2026 — production
+> déployée et vérifiée (run C #1).**
 > Verdicts possibles : **VALIDÉ PAR TEST RÉEL** / **VALIDÉ EN
 > SIMULATION** / **NON TESTÉ** / **BLOQUÉ**.
 
@@ -40,8 +41,14 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
   — `/health` 200 (simulation), `/ready` 200 (D1 dédiée connectée,
   7 tables), secrets posés, **E2E distant 15/15** (12 réseau +
   3 FixedClock), deux déploiements complets consécutifs ;
-- **derniers runs sur le SHA final `4536bc7`** : A #16 ✓ · B #18 ✓ ·
-  D #3 ✓ ; production jamais déclenchée (décision du fondateur).
+- **derniers runs sur le SHA `4536bc7`** : A #16 ✓ · B #18 ✓ · D #3 ✓ ;
+- **PRODUCTION DÉPLOYÉE ET VÉRIFIÉE** (autorisation « DEPLOYER »
+  explicite du fondateur — run **C #1 vert**, SHA déployé `4a586da`) :
+  `https://vitrine-video-lite-api.mdgejcinfluence.workers.dev` —
+  `/health` 200 (production, paiements désactivés), `/ready` 200 (D1
+  production, 7 tables), secrets posés, simulation **404
+  SIMULATION_DISABLED** par requête réelle, **21 contrôles HTTP réels
+  PASS** ; CinetPay volontairement différé (§5).
 
 ## 2. Verdicts par exigence
 
@@ -62,14 +69,14 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
 | Webhook CinetPay : vérification officielle /check, jamais la notification | `verifyCinetPayPayment` (résultat "00", ACCEPTED, montant strict, devise, site) ; 14 cas invalides testés (montant/devise/site/code/statuts/inconnu/rejeu/concurrence) | **VALIDÉ PAR TEST RÉEL** (client /check simulé au point d'injection ; **aucune clé réelle → appel réseau réel NON TESTÉ**) |
 | Idempotence paiement (jamais double crédit) | rejeu même référence → DUPLICATE ; déjà PAID → already ; 3 webhooks concurrents → 1 seul lot | **VALIDÉ PAR TEST RÉEL** |
 | Échec → FAILED définitif | REFUSED/CANCELLED/FAILED → FAILED, aucun crédit ; succès rejoué après échec → jamais crédité (anti-fraude) | **VALIDÉ PAR TEST RÉEL** |
-| Simulation staging uniquement + SIMULATION_SECRET | Test 14 : route 401 sans/mauvais secret ; production (env simulé) → 404 SIMULATION_DISABLED ; `simulated: true` dans les réponses | **VALIDÉ PAR TEST RÉEL** |
+| Simulation staging uniquement + SIMULATION_SECRET | Test 14 : route 401 sans/mauvais secret ; `simulated: true` en staging ; **production : requête HTTP réelle → 404 SIMULATION_DISABLED** | **VALIDÉ PAR TEST RÉEL** (staging + production réelle) |
 | CinetPay désactivé partout | initiate réel non configuré → PAYMENT_PROVIDER_NOT_CONFIGURED, 0 crédit ; garde workflow C sur wrangler.jsonc | **VALIDÉ PAR TEST RÉEL** |
 | Statistiques admin + ADMIN_METRICS_TOKEN | Test 15 : 401 sans token ; métriques EXACTES (4 terminaux, 12 gratuits, 4 exports, 2 PAID/1 FAILED, ventes par formule, 8 000 XOF confirmés) ; aucune donnée individuelle | **VALIDÉ PAR TEST RÉEL** |
 | Déploiement staging | **Worker en ligne** (runs B #17 et B #18) : URL workers.dev, /health + /ready 200, D1 dédiée connectée, secrets posés, E2E réseau 15/15 ×2 | **VALIDÉ PAR TEST RÉEL** (distant) |
-| Déploiement production | Workflow C prêt (confirmation « DEPLOYER » requise) ; non lancé à ce stade | **NON TESTÉ** (attente confirmation fondateur) |
+| Déploiement production | **Worker en ligne** (run C #1, autorisation « DEPLOYER ») : URL workers.dev, /health 200 (production + paiements désactivés), /ready 200 (D1 production, 7 tables), secrets posés, 21 contrôles HTTP réels PASS | **VALIDÉ PAR TEST RÉEL** (distant) |
 | Dépôt GitHub `mdgejc14-hash/vitrine-video-server` | **Créé** (HTTP 201, nouveau jeton fondateur) et poussé ; SHA distant vérifié identique au local à chaque push | **VALIDÉ PAR TEST RÉEL** |
 | Workflows A (qualité) | **16 exécutions réelles sur GitHub, 15 succès** (seul échec : #9 — défaut de course applicatif corrigé par `3e0845d`) ; dernier : **#16 ✓** (SHA `4536bc7`) : lint + typecheck + 64 tests par run | **VALIDÉ PAR TEST RÉEL** |
-| Workflows B/C/D | **B : 18 exécutions** — derniers runs **#17 et #18 succès complets** (sonde → provision → déploiement → secrets → E2E réseau 15/15) ; échecs intermédiaires = défauts de workflow ou de première exécution réelle, tous corrigés (§5, historique) ; **D : 3/3 succès** (dernier #3, artefact checkpoint) ; **C NON TESTÉ** (déclenchement manuel réservé au fondateur, confirmation « DEPLOYER ») | **B/D : VALIDÉ PAR TEST RÉEL · C : NON TESTÉ** |
+| Workflows B/C/D | **B : 18 exécutions** — derniers **#17-#18 succès complets** (staging + E2E réseau 15/15) ; **C : 1 exécution, 1 succès** (run #1 — production complète : garde paiements, déploiement, secrets, vérification /health) ; **D : 4/4 succès** (artefacts checkpoint) ; échecs B intermédiaires tous corrigés (§5, historique) | **VALIDÉ PAR TEST RÉEL** |
 | Docs (OPENAPI, contrat, référence UI 14 écrans) | Livrés (ce dépôt) ; référence UI = planche officielle exacte des 14 écrans fournie par le fondateur (corrigée le 17/11) | **VALIDÉ EN SIMULATION** (statique) |
 | E2E réseau distant (staging workers.dev) | **Runs B #17 et B #18** : 12 scénarios PASS en réseau réel + 3 expirations en FixedClock local (documenté, deux exécutions) | **VALIDÉ PAR TEST RÉEL** (distant, hors expirations temporaires) |
 
@@ -139,15 +146,64 @@ sont consommés avant l'achat dans ce banc).
   **aucune modification** — audit lecture seule Phase 1, jamais
   référencées dans la config.
 
-## 5. Étape suivante — production (confirmation requise)
+## 5. Déploiement production — EFFECTUÉ et vérifié (run C #1)
 
-Le staging est déployé, sain et prouvé (§ ci-dessus). Le déploiement
-production (workflow C) est prêt et gardé :
-- `PAYMENT_MODE=disabled`, `CINETPAY_ENABLED=false` (garde automatique
-  dans le workflow + vérification post-déploiement) ;
-- D1 production déjà créée et migrée (7 tables vérifiées) ;
-- il ne sera lancé **qu'après la confirmation explicite « DEPLOYER »**
-  du fondateur, conformément à l'instruction maîtresse.
+Autorisation explicite « DEPLOYER » reçue du fondateur (instruction
+finale du 17/11) ; workflow C exécuté avec sa garde `confirm=DEPLOYER`.
+
+- **Worker** : `vitrine-video-lite-api` —
+  `https://vitrine-video-lite-api.mdgejcinfluence.workers.dev`
+- **Run C #1** : succès complet (id 44048419731) — garde production
+  (PAYMENT_MODE=disabled, CINETPAY_ENABLED=false), vérification absence
+  de secret committé, sonde de droits, provision D1 idempotent,
+  déploiement, secrets, vérification /health. **SHA déployé** :
+  `4a586dafe187ee767aa22a39bc9ea264642cf694` (runtime identique au
+  staging vérifié : diff = documents + commentaires seuls)
+- **/health réel** : HTTP 200 — `environment: production`,
+  `payment_mode: disabled`, aucun champ sensible exposé
+- **/ready réel** : HTTP 200 — D1 production `17e6a5cf-…7fa2`
+  connectée ; **7 tables métier vérifiées nom par nom** via l'API D1 :
+  terminals, credit_grants, payments, export_authorizations,
+  payment_webhook_events, device_events, rate_limit_counters
+- **Secrets** (noms seuls, valeurs jamais lues ni affichées) :
+  `DEVICE_ID_HMAC_SECRET`, `ADMIN_METRICS_TOKEN` — générés par openssl
+  dans CI, indépendants des jetons Cloudflare et GitHub ; aucun
+  SIMULATION_SECRET en production
+- **Simulation interdite** : `POST /__test__/payments/settle` →
+  **404 SIMULATION_DISABLED** (requête HTTP réelle)
+- **Contrôles fonctionnels réels : 21/21 PASS** (terminal de test
+  dédié `e2e-prod-verif-finale-1711`, ANDROID_ID factice, préfixe
+  explicite, données additives documentées) :
+  - bootstrap → 201, **3 crédits gratuits une seule fois** ;
+    re-bootstrap → 200, aucun crédit réattribué ;
+  - `/v1/terminals/me` → 200 (solde, lots, pseudonyme) ;
+  - `/v1/exports/authorize` → 201 ; **rejeu même `Idempotency-Key` →
+    200, même autorisation, un seul débit** ;
+  - épuisement exact des 3 crédits puis **402 + 4 offres** renvoyées ;
+  - `/v1/payments/initiate` → 503 `PAYMENT_PROVIDER_NOT_CONFIGURED`
+    (paiements désactivés — **aucune transaction réelle possible**) ;
+  - webhook CinetPay invalide → 400 rejeté, aucun crédit ;
+  - `/v1/admin/metrics` sans token → 401 ;
+  - aucune route comptes/promos/parrainage/vidéos/briefs (404) ;
+  - pseudonyme seul exposé — ANDROID_ID brut absent des réponses.
+- **Comportements couverts par le staging + les 64 tests** (non rejoués
+  en production pour ne pas créer de données superflues) : ordre de
+  consommation payant-expirant-d'abord, expirations strictes 24 h /
+  30 j, lots superposés, concurrence même clé.
+- **Anciennes ressources** : worker `vitrine-video-api` vivant
+  (v0.9.1-d42.23), anciennes D1 intactes — aucune modification.
+
+### CinetPay — volontairement différé (liste précise de la phase finale)
+
+1. clés réelles CinetPay (apikey + site_id) fournies par le fondateur ;
+2. `CINETPAY_ENABLED=true` et `PAYMENT_MODE=cinetpay` dans
+   `wrangler.jsonc` (environnement production) ;
+3. secrets `CINETPAY_API_KEY` / `CINETPAY_SITE_ID`
+   (`wrangler secret put`, jamais committés) ;
+4. revalidation par un paiement test réel + webhook signé ;
+5. aucune refonte nécessaire : l'architecture paiement (initiate
+   serveur-seul, webhook vérifié via `/v2/payment/check`, idempotence,
+   échec FAILED définitif) est en place et testée au point d'injection.
 
 ### Historique des verrous (tous résolus, pour la traçabilité)
 
@@ -170,9 +226,9 @@ production (workflow C) est prêt et gardé :
   corrigé —, sonde piégée par un 415, bits exécutables perdus) :
   tous corrigés, aucun n'était un défaut du serveur.
 
-État actuel : **B #17 et B #18 succès complets** (déploiement staging +
-secrets + E2E réseau 15/15). Prochaine étape : workflow **C** avec la
-confirmation explicite « DEPLOYER » (production, paiements désactivés).
+État actuel : **B #17-#18 (staging) et C #1 (production) succès
+complets**. Le workflow C reste gardé par `confirm=DEPLOYER` pour tout
+redéploiement futur.
 
 **Hygiène des jetons** : les deux jetons ont été collés en clair dans
 le canal de discussion. Après validation finale de la mission, il est
@@ -192,9 +248,14 @@ Ils ne sont stockés nulle part dans le dépôt ; usage local uniquement
   ordre stricts (03 bootstrap, 11 Vidéo finale = porte crédits,
   12 tableau de bord, 13 paiement, 14 support WhatsApp sans API).
 - Workflows : A (15/16 verts, dernier #16), B (derniers #17-#18 =
-  déploiements complets), D (3/3, dernier #3) sont **prouvés** ; C
-  restera NON TESTÉ jusqu'à son déclenchement manuel par le fondateur
-  (gardé volontairement derrière la confirmation « DEPLOYER »).
+  déploiements staging complets), **C (#1 = déploiement production
+  complet)** et D (4/4) sont **prouvés** ; C reste gardé par
+  `confirm=DEPLOYER` pour tout futur redéploiement.
+- Production : deux terminaux de test marqués
+  (`e2e-prod-verif-finale-1711`, `-1711b`) créés par les contrôles
+  (données additives, ANDROID_ID factices, aucune donnée réelle) ;
+  les comportements consommateurs approfondis restent couverts par le
+  staging E2E et les 64 tests.
 - Les échecs intermédiaires de B (#1-#4 défauts de workflow ; #13-#16
   première exécution réelle du chemin de déploiement) sont tous
   corrigés et documentés en §5 (historique) ; aucun n'était un défaut
