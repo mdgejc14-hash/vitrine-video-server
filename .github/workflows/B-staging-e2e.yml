@@ -102,6 +102,32 @@ jobs:
           else
             echo "can_deploy=false" >> "$GITHUB_OUTPUT"
             echo "droit de déploiement ABSENT (sonde HTTP $CODE) — déploiement sauté"
+            echo ""
+            echo "=== DIAGNOSTIC DES PERMISSIONS DU SECRET (codes HTTP seuls) ==="
+            ACC=d7dac13da931423a19812f6d9116bd47
+            H="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+            B="https://api.cloudflare.com/client/v4"
+            for LIGNE in \
+              "GET /workers/scripts:\\ GET scripts" \
+              "PUT /workers/scripts (sonde):\\ PROBE" \
+              "GET /workers/subdomain:\\ SUBDOMAIN" \
+              "GET /workers/services:\\ SERVICES" \
+              "GET /d1/database:\\ D1LIST" \
+              "GET /accounts:\\ ACCOUNTS" ; do
+              LABEL="${LIGNE%%\\*}"
+              CMD="${LIGNE#*\\}"
+              case "$CMD" in
+                " GET scripts")    C=$(curl -s -o /dev/null -w "%{http_code}" -H "$H" "$B/accounts/$ACC/workers/scripts") ;;
+                " PROBE")          C=$(curl -s -o /dev/null -w "%{http_code}" -X PUT -H "$H" -F 'metadata={"main_module":"index.js","compatibility_date":"2025-09-06"};type=application/json' "$B/accounts/$ACC/workers/scripts/vvl-perm-probe") ;;
+                " SUBDOMAIN")      C=$(curl -s -o /dev/null -w "%{http_code}" -H "$H" "$B/accounts/$ACC/workers/subdomain") ;;
+                " SERVICES")       C=$(curl -s -o /dev/null -w "%{http_code}" -H "$H" "$B/accounts/$ACC/workers/services") ;;
+                " D1LIST")         C=$(curl -s -o /dev/null -w "%{http_code}" -H "$H" "$B/accounts/$ACC/d1/database") ;;
+                " ACCOUNTS")       C=$(curl -s -o /dev/null -w "%{http_code}" -H "$H" "$B/accounts") ;;
+                *)                 C="n/a" ;;
+              esac
+              echo "  $LABEL → HTTP $C"
+            done
+            echo "=== FIN DIAGNOSTIC (Workers Scripts:Edit requis pour déployer) ==="
           fi
 
       # ------------------------------------------------------------------
