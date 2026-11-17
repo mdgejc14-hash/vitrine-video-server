@@ -1,9 +1,10 @@
 # CHECKPOINT_SERVER.md — Point de contrôle (référence de reprise)
 
 > Mission : backend Cloudflare VITRINE VIDÉO LITE (serveur uniquement).
-> Date du point : **17/11/2026** (nuit). État : **Phases 1-6 terminées
-> localement ; Phase 7 (déploiement distant) bloquée par accès ; Phase 8
-> (docs) livrée.**
+> Date du point : **17/11/2026** (nuit, mise à jetons fondateur fournis).
+> État : **Phases 1-6 terminées et prouvées ; dépôt GitHub créé + poussé ;
+> D1 distantes créées + migrées ; CI A/B/D verte ; déploiement Worker
+> BLOQUÉ par l'unique permission « Workers Scripts:Edit » manquante.**
 
 ## Comptes EXACTS au point de contrôle
 
@@ -19,7 +20,11 @@
 | Workflows | **4** (A/B/C/D), YAML validés, garde anti-fork sur B/C/D |
 | Scripts | **2** (`provision.sh`, `e2e-runner.sh`), syntaxe bash + Python embarqué validées |
 | Migrations SQL | **1** (`0001_init.sql`, 16 commandes, 7 tables) |
-| Commit Git | **1er commit à créer** (dépôt local initialisé, aucun commit) |
+| Commits Git (local = distant) | 6 commits, `main` = 9abb388 |
+| Dépôt GitHub | **créé** `mdgejc14-hash/vitrine-video-server` (public) |
+| D1 distantes | staging `44694796-…812d`, production `17e6a5cf-…7fa2` — 7 tables métier vérifiées chacune |
+| CI GitHub | A : 5/5 succès · B : run #5 succès (tests réels + saut honnête) · D : 1/1 succès + artefact · C : non déclenché (réservé fondateur) |
+| Secret Actions | `CLOUDFLARE_API_TOKEN` déposé (chiffré) — inactif pour le déploiement tant que la permission manque |
 
 ### Répartition des 15 scénarios (tous exécutés)
 
@@ -60,25 +65,26 @@
 - `wrangler dev` n'applique PAS les migrations localement →
   `npm run dev` = `d1 migrations apply --local` puis `wrangler dev`.
 
-## Blocages connus (Phase 7)
+## Blocage restant (UNIQUE)
 
-1. **Création du dépôt GitHub `mdgejc14-hash/vitrine-video-server`
-   refusée (403 ×2)** avec le PAT fondateur → ne pas retenter ; le
-   fondateur doit créer le dépôt (public autorisé) ou donner un PAT avec
-   droit `repo` de création.
-2. **Token Cloudflare inaccessible localement** (secret GitHub privé du
-   compte d7dac13…) → aucun déploiement distant, aucune création D1
-   distante ; `database_id` restent `PENDING_D1_CREATION_*` dans
-   `wrangler.jsonc` (placeholders explicites).
-3. Aucune ressource existante touchée (ancien worker/D1/B2 intacts —
-   vérifié en lecture seule en Phase 1).
+1. **Le jeton Cloudflare fourni n'a pas la permission
+   « Workers Scripts:Edit »** (PUT script → 403, PUT secret → 403 ;
+   D1 pleinement opérationnel en revanche). Le déploiement du Worker
+   staging puis production est donc impossible avec ce jeton.
+   **Action fondateur** : ajouter la permission au jeton (même valeur —
+   le secret Actions devient opérationnel immédiatement), puis relancer
+   les workflows B puis C. Tout le reste est prêt et prouvé.
+2. Ressources existantes : **rien n'a été touché** — ancien worker
+   vérifié vivant (`/health` → v0.9.1-d42.23, 8 tables), anciennes D1
+   (`vitrine-video-db`, `vitrine-video-db-preview`) intactes à
+   l'inventaire, aucune écriture dessus.
 
-## Reprise — prochaine action selon l'accès disponible
+## Reprise — prochaine action
 
-- **Dépôt créé** : `git add -A && git commit` (voir §Commit ci-dessous),
-  ajouter remote, pousser `main`.
-- **Secret `CLOUDFLARE_API_TOKEN` ajouté** au dépôt GitHub → lancer le
-  workflow **B** (déploiement staging + E2E réseau) puis **C** (production,
-  confirmation `DEPLOYER`, paiements désactivés) puis **D** (checkpoint).
-- **Aucun accès** : le projet reste complet et prouvé localement ;
-  REPORT_SERVER_FINAL.md documente l'état exact.
+- **Permission ajoutée au jeton** : onglet Actions → workflow **B**
+  « Run workflow » (déploie staging + E2E réseau 15 scénarios), puis
+  workflow **C** avec confirmation « DEPLOYER » (production, paiements
+  désactivés), puis **D** (checkpoint). Vérifier `main` = 9abb388 avant.
+- **Historique CI utile** : runs A #1-#5 (succès), B #5 (succès, tests
+  réels, déploiement sauté — sondes 403), B #1-#4 (défauts workflow
+  corrigés : heredocs/sonde/bits), D #1 (succès + artefact checkpoint-1).

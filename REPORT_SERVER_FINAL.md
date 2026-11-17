@@ -8,19 +8,28 @@
 ## 1. Synthèse
 
 Le backend complet (Cloudflare Worker + D1 + préparation CinetPay
-désactivée) est **construit, typé, linté et prouvé localement** :
+désactivée) est **construit, typé, linté et prouvé** :
 **64/64 tests PASS** dont les **15 scénarios obligatoires réellement
-exécutés**, plus un rejeu **HTTP réel** des 15 scénarios contre un
-Worker vivant. Le déploiement distant (Phases 7) est **BLOQUÉ** par deux
-restrictions d'accès documentées (§5) — rien n'a été forcé, aucune
-ressource Cloudflare existante n'a été touchée.
+exécutés**, un rejeu **HTTP réel** des 15 scénarios contre un Worker
+vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
+
+**Mise à jour 17/11 (jetons fondateur fournis)** :
+- dépôt GitHub **créé et poussé** : `mdgejc14-hash/vitrine-video-server`
+  (public), `main` à jour ;
+- bases D1 **créées et migrées à distance** (7 tables métier vérifiées
+  dans chacune) ;
+- secret Actions `CLOUDFLARE_API_TOKEN` **déposé** (chiffré NaCl) ;
+- **reste UN seul verrou** : le jeton Cloudflare fourni couvre D1 mais
+  **pas « Workers Scripts:Edit »** → le déploiement du Worker lui-même
+  reste bloqué (§5). Aucune ressource existante n'a été touchée
+  (ancien worker vérifié vivant v0.9.1-d42.23, anciennes D1 intactes).
 
 ## 2. Verdicts par exigence
 
 | Exigence | Preuve | Verdict |
 |---|---|---|
 | Worker `vitrine-video-lite-api` (code, routes /v1) | 10 endpoints (OPENAPI.yaml) ; `/health`→`{"status":"ok"…}` réel | **VALIDÉ PAR TEST RÉEL** (local) |
-| D1 staging + production (création) | `scripts/provision.sh` prêt (idempotent, --only, jamais suppressif) ; non exécuté à distance | **BLOQUÉ** (token CF inaccessible localement) |
+| D1 staging + production (création) | **créées à distance** : `44694796-a758-4e1f-9776-245a3844812d` (staging) et `17e6a5cf-788b-4e70-a3a1-bf5ad0167fa2` (production) ; migrations appliquées ; 7 tables métier vérifiées dans chacune (inventaire SQL réel) | **VALIDÉ PAR TEST RÉEL** (distant) |
 | Migrations SQL versionnées non destructives | `0001_init.sql` : 16 commandes, 7 tables, appliqué réellement (locale + bancs) | **VALIDÉ PAR TEST RÉEL** (local) |
 | Terminaux pseudonymisés (ANDROID_ID → HMAC-SHA256) | tests `deviceHash` (5) ; ANDROID_ID absent de D1/réponses/journaux (tests 1/4/5, métriques sans données individuelles) | **VALIDÉ PAR TEST RÉEL** |
 | Bootstrap 3 crédits une seule fois, atomique, pas de réattribution | Test 1 (201/3 crédits), Test 4 (re-bootstrap → 200, solde conservé) ; concurrence implicite UNIQUE(device_hash) | **VALIDÉ PAR TEST RÉEL** |
@@ -37,10 +46,10 @@ ressource Cloudflare existante n'a été touchée.
 | Simulation staging uniquement + SIMULATION_SECRET | Test 14 : route 401 sans/mauvais secret ; production (env simulé) → 404 SIMULATION_DISABLED ; `simulated: true` dans les réponses | **VALIDÉ PAR TEST RÉEL** |
 | CinetPay désactivé partout | initiate réel non configuré → PAYMENT_PROVIDER_NOT_CONFIGURED, 0 crédit ; garde workflow C sur wrangler.jsonc | **VALIDÉ PAR TEST RÉEL** |
 | Statistiques admin + ADMIN_METRICS_TOKEN | Test 15 : 401 sans token ; métriques EXACTES (4 terminaux, 12 gratuits, 4 exports, 2 PAID/1 FAILED, ventes par formule, 8 000 XOF confirmés) ; aucune donnée individuelle | **VALIDÉ PAR TEST RÉEL** |
-| Déploiement staging puis production | Workflows B/C prêts ; **non exécutés** (token CF = secret GitHub uniquement) | **BLOQUÉ** |
-| Dépôt GitHub `mdgejc14-hash/vitrine-video-server` | Création refusée **403 ×2** (PAT fondateur sans droit de création) — non retenté | **BLOQUÉ** |
-| Workflows A (qualité) | Fichier écrit, YAML valide ; **non exécuté sur GitHub** (dépôt absent) | **NON TESTÉ** (local : tsc+eslint+vitest équivalents PASS) |
-| Workflows B/C/D | Fichiers écrits, YAML valides, garde anti-fork ; **non exécutés** | **NON TESTÉ** |
+| Déploiement staging puis production | `wrangler deploy` refusé : « No access to the specified resource » ; sondes API : PUT script **403**, PUT secret **403** (même sur l'ancien worker) → le jeton n'a pas « Workers Scripts:Edit » | **BLOQUÉ** (une permission à ajouter, §5) |
+| Dépôt GitHub `mdgejc14-hash/vitrine-video-server` | **Créé** (HTTP 201, nouveau jeton fondateur) et poussé ; SHA distant vérifié identique au local à chaque push | **VALIDÉ PAR TEST RÉEL** |
+| Workflows A (qualité) | **5 exécutions réelles sur GitHub, 5 succès** (runs #1-#5, dernier id 43992491411) : lint + typecheck + 64 tests par run | **VALIDÉ PAR TEST RÉEL** |
+| Workflows B/C/D | **B exécuté** : run #5 **succès** (id 43992491292) — tests réellement passés dans CI + sonde 403 → déploiement sauté à juste titre (runs #1-#4 en échec = bugs de workflow corrigés : heredocs indentés avalant les commandes, sonde 415, bits exécutables) ; **D exécuté** : run #1 succès (id 43992179335) + artefact checkpoint-1 (4 567 o) ; **C NON TESTÉ** (déclenchement manuel réservé au fondateur, confirmation « DEPLOYER ») | **B/D : VALIDÉ PAR TEST RÉEL · C : NON TESTÉ** |
 | Docs (OPENAPI, contrat, référence UI 14 écrans) | Livrés (ce dépôt) ; référence UI : numérotation indicative (planche image non relue), répartition serveur/local contractuelle | **VALIDÉ EN SIMULATION** (statique) |
 | E2E réseau distant (staging workers.dev) | Remplacé par E2E HTTP contre Worker réel local (15/15) | **NON TESTÉ** (distant) |
 
@@ -110,18 +119,30 @@ sont consommés avant l'achat dans ce banc).
   **aucune modification** — audit lecture seule Phase 1, jamais
   référencées dans la config.
 
-## 5. Blocages restants (actions fondateur)
+## 5. Blocages restants (UNE action fondateur)
 
-1. **Créer le dépôt GitHub** `mdgejc14-hash/vitrine-video-server`
-   (public autorisé) — le PAT fondateur actuel ne peut pas créer de dépôt
-   (403, deux tentatives méthodiques, non retentées). Ensuite :
-   `git push` du dépôt local complet.
-2. **Ajouter le secret** `CLOUDFLARE_API_TOKEN` dans le dépôt GitHub
-   (Actions) pour débloquer B (staging) puis C (production, confirmation
-   « DEPLOYER », paiements désactivés) puis D (checkpoint hebdomadaire).
-3. Les `database_id` de `wrangler.jsonc` sont des placeholders
-   `PENDING_D1_CREATION_*` : le workflow B/C les remplit via
-   `provision.sh --apply-config` sans jamais les committer.
+Le dépôt existe, le secret Actions est en place, les D1 sont créées et
+migrées, la CI est verte. **Il ne manque qu'une permission** :
+
+1. **Ajouter « Workers Scripts: Edit » au jeton Cloudflare fourni**
+   (tableau de bord CF → My Profile → API Tokens → modifier le jeton →
+   ajouter la permission *Account · Workers Scripts · Edit*). La valeur
+   du jeton reste identique : le secret Actions déjà déposé devient
+   immédiatement opérationnel, sans nouvelle configuration.
+2. Ensuite : relancer le workflow **B** (staging + E2E réseau 15
+   scénarios) puis le workflow **C** (production, confirmation
+   « DEPLOYER », paiements désactivés) depuis l'onglet Actions.
+
+Historique des verrous levés le 17/11 : création de dépôt (403 avec
+l'ancien PAT → nouveau jeton fourni, 201) ; token CF inaccessible →
+jeton fourni (D1 OK, deploy non) ; `database_id` placeholders → UUIDs
+réels committés (0be90e9).
+
+**Hygiène des jetons** : les deux jetons ont été collés en clair dans
+le canal de discussion. Après validation finale de la mission, il est
+recommandé de **les révoquer/remplacer** (le PAT GitHub et le jeton CF).
+Ils ne sont stockés nulle part dans le dépôt ; usage local uniquement
+(`~/.d42_secrets/`, hors commits).
 
 ## 6. Limites honnêtes
 
@@ -133,8 +154,14 @@ sont consommés avant l'achat dans ce banc).
 - La référence UI 14 écrans : numérotation indicative (planche image non
   relisible par l'agent) ; la répartition serveur/local et les appels
   API sont, eux, contractuels et testés.
-- Les workflows GitHub n'ont jamais tourné (dépôt inexistant) : leur
-  syntaxe est validée (YAML), leur exécution restera NON TESTÉE jusqu'au
-  push.
+- Workflows : A (5 runs verts), B (run #5 vert, déploiement sauté à
+  juste titre), D (run #1 vert + artefact) sont **prouvés** ; C restera
+  NON TESTÉ jusqu'à son déclenchement manuel par le fondateur (gardé
+  volontairement derrière la confirmation « DEPLOYER »).
+- Quatre runs B intermédiaires (#1-#4) ont échoué pour des défauts du
+  **workflow lui-même** (heredocs indentés par le YAML avalant les
+  commandes — dont un faux vert détecté et corrigé —, sonde de droits
+  piégée par un 415, bits exécutables perdus) : tous corrigés, aucun
+  n'était un défaut du serveur. Journal complet dans l'onglet Actions.
 - Aucun développement Android n'a été fait (frontière respectée) ; aucun
   ancien dépôt n'a été modifié.
