@@ -31,7 +31,7 @@
     {
       "binding": "DB",
       "database_name": "vitrine-video-lite-staging-db",
-      "database_id": "PENDING_D1_CREATION_STAGING"
+      "database_id": "44694796-a758-4e1f-9776-245a3844812d"
     }
   ],
   "vars": {
@@ -49,7 +49,7 @@
         {
           "binding": "DB",
           "database_name": "vitrine-video-lite-production-db",
-          "database_id": "PENDING_D1_CREATION_PRODUCTION"
+          "database_id": "17e6a5cf-788b-4e70-a3a1-bf5ad0167fa2"
         }
       ],
       "vars": {
