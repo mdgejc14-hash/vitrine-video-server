@@ -21,10 +21,10 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
 - e2e distant : variante stricte du Test 6 ajoutée (gratuits épuisés
   avant achat → 6 payants puis 7e refusé) + réalité « 9 si gratuits
   restants » ; pré-vérification HTTP locale 15/15 ;
-- runs B #7-B #10 : la sonde du jeton du secret Actions renvoie
-  **403** sur le dépôt de script ; batterie de diagnostic exécutée :
-  le jeton a Workers Scripts **Read** mais pas **Edit** (carte
-  identique à l'ancien jeton) → **déploiement toujours BLOQUÉ** (§5) ;
+- runs B #7-B #10 (alors) : la sonde du jeton du secret Actions
+  renvoyait **403** sur le dépôt de script ; batterie de diagnostic
+  exécutée : le jeton avait Workers Scripts **Read** sans **Edit**
+  (résolu ensuite — §5, historique) ;
 - **défaut applicatif découvert par A #9 et corrigé** : course même clé
   (8 concurrents, 3 débits sérialisés avant l'insertion du gagnant →
   402 parasites). Correctif `3e0845d` : re-vérification bornée (5×25 ms)
@@ -34,10 +34,14 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
   « Workers Scripts: Edit » (premier essai déposé par erreur dans le
   miroir `vitrine-video-d42-arena` — détecté par horodatage, corrigé
   au bon dépôt à 07:35:28) ;
-- **STAGING DÉPLOYÉ ET PROUVÉ** (run B #17, 07:50 UTC) :
+- **STAGING DÉPLOYÉ ET PROUVÉ** (runs B #17 et B #18, 07:50-07:54
+  UTC) :
   `https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev`
-  — `/health` 200 (simulation), `/ready` 200 (D1 connectée, 7 tables),
-  secrets posés, **E2E distant 15/15** (12 réseau + 3 FixedClock).
+  — `/health` 200 (simulation), `/ready` 200 (D1 dédiée connectée,
+  7 tables), secrets posés, **E2E distant 15/15** (12 réseau +
+  3 FixedClock), deux déploiements complets consécutifs ;
+- **derniers runs sur le SHA final `4536bc7`** : A #16 ✓ · B #18 ✓ ·
+  D #3 ✓ ; production jamais déclenchée (décision du fondateur).
 
 ## 2. Verdicts par exigence
 
@@ -61,13 +65,13 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
 | Simulation staging uniquement + SIMULATION_SECRET | Test 14 : route 401 sans/mauvais secret ; production (env simulé) → 404 SIMULATION_DISABLED ; `simulated: true` dans les réponses | **VALIDÉ PAR TEST RÉEL** |
 | CinetPay désactivé partout | initiate réel non configuré → PAYMENT_PROVIDER_NOT_CONFIGURED, 0 crédit ; garde workflow C sur wrangler.jsonc | **VALIDÉ PAR TEST RÉEL** |
 | Statistiques admin + ADMIN_METRICS_TOKEN | Test 15 : 401 sans token ; métriques EXACTES (4 terminaux, 12 gratuits, 4 exports, 2 PAID/1 FAILED, ventes par formule, 8 000 XOF confirmés) ; aucune donnée individuelle | **VALIDÉ PAR TEST RÉEL** |
-| Déploiement staging | **Worker en ligne** (run B #17) : URL workers.dev, /health + /ready 200, D1 distante connectée, secrets posés, E2E réseau 15/15 | **VALIDÉ PAR TEST RÉEL** (distant) |
+| Déploiement staging | **Worker en ligne** (runs B #17 et B #18) : URL workers.dev, /health + /ready 200, D1 dédiée connectée, secrets posés, E2E réseau 15/15 ×2 | **VALIDÉ PAR TEST RÉEL** (distant) |
 | Déploiement production | Workflow C prêt (confirmation « DEPLOYER » requise) ; non lancé à ce stade | **NON TESTÉ** (attente confirmation fondateur) |
 | Dépôt GitHub `mdgejc14-hash/vitrine-video-server` | **Créé** (HTTP 201, nouveau jeton fondateur) et poussé ; SHA distant vérifié identique au local à chaque push | **VALIDÉ PAR TEST RÉEL** |
-| Workflows A (qualité) | **5 exécutions réelles sur GitHub, 5 succès** (runs #1-#5, dernier id 43992491411) : lint + typecheck + 64 tests par run | **VALIDÉ PAR TEST RÉEL** |
-| Workflows B/C/D | **B exécuté** : run #5 **succès** (id 43992491292) — tests réellement passés dans CI + sonde 403 → déploiement sauté à juste titre (runs #1-#4 en échec = bugs de workflow corrigés : heredocs indentés avalant les commandes, sonde 415, bits exécutables) ; **D exécuté** : run #1 succès (id 43992179335) + artefact checkpoint-1 (4 567 o) ; **C NON TESTÉ** (déclenchement manuel réservé au fondateur, confirmation « DEPLOYER ») | **B/D : VALIDÉ PAR TEST RÉEL · C : NON TESTÉ** |
+| Workflows A (qualité) | **16 exécutions réelles sur GitHub, 15 succès** (seul échec : #9 — défaut de course applicatif corrigé par `3e0845d`) ; dernier : **#16 ✓** (SHA `4536bc7`) : lint + typecheck + 64 tests par run | **VALIDÉ PAR TEST RÉEL** |
+| Workflows B/C/D | **B : 18 exécutions** — derniers runs **#17 et #18 succès complets** (sonde → provision → déploiement → secrets → E2E réseau 15/15) ; échecs intermédiaires = défauts de workflow ou de première exécution réelle, tous corrigés (§5, historique) ; **D : 3/3 succès** (dernier #3, artefact checkpoint) ; **C NON TESTÉ** (déclenchement manuel réservé au fondateur, confirmation « DEPLOYER ») | **B/D : VALIDÉ PAR TEST RÉEL · C : NON TESTÉ** |
 | Docs (OPENAPI, contrat, référence UI 14 écrans) | Livrés (ce dépôt) ; référence UI = planche officielle exacte des 14 écrans fournie par le fondateur (corrigée le 17/11) | **VALIDÉ EN SIMULATION** (statique) |
-| E2E réseau distant (staging workers.dev) | **Run B #17** : 12 scénarios PASS en réseau réel + 3 expirations en FixedClock local (documenté) | **VALIDÉ PAR TEST RÉEL** (distant, hors expirations temporaires) |
+| E2E réseau distant (staging workers.dev) | **Runs B #17 et B #18** : 12 scénarios PASS en réseau réel + 3 expirations en FixedClock local (documenté, deux exécutions) | **VALIDÉ PAR TEST RÉEL** (distant, hors expirations temporaires) |
 
 ## 3. Les 15 scénarios obligatoires — résultats d'exécution
 
@@ -147,27 +151,28 @@ production (workflow C) est prêt et gardé :
 
 ### Historique des verrous (tous résolus, pour la traçabilité)
 
-Tout est prêt (dépôt, D1 migrées, CI verte, documentation alignée) et
-**vérifié par exécution** : le déploiement échoue uniquement sur
-`PUT …/workers/scripts` → 403 « No access to the specified resource ».
+- **Jeton sans « Workers Scripts:Edit »** (B #5-#12) : sonde de dépôt
+  403 « No access to the specified resource » ; batterie de diagnostic
+  exécutée dans B #7/#8 (codes HTTP seuls, aucune valeur affichée) :
+  Workers Scripts Read sans Edit. **Résolu le 17/11 07:35** : jeton
+  régénéré avec Workers:Edit + Workers Scripts:Edit, secret Actions mis
+  à jour au bon dépôt (le premier essai était allé par erreur dans le
+  miroir `vitrine-video-d42-arena` — détecté par horodatage du secret).
+- **Première exécution réelle du chemin de déploiement** (B #13-#16),
+  défauts corrigés un à un, chacun prouvé par exécution : inventaire
+  D1 (f-string échappée → SyntaxError), `--account-id` supprimé de
+  wrangler 4, secrets à poser APRÈS le premier déploiement, activation
+  workers.dev au premier dépôt (code 10007 → diagnostic +
+  retentative), propagation de l'URL workers.dev (attente /health),
+  User-Agent `Python-urllib` bloqué par Cloudflare (UA explicite).
+- **Runs B #1-#4** : défauts du workflow lui-même (heredocs indentés
+  par le YAML avalant les commandes — dont un faux vert détecté et
+  corrigé —, sonde piégée par un 415, bits exécutables perdus) :
+  tous corrigés, aucun n'était un défaut du serveur.
 
-**La batterie de diagnostic (runs B #7 et B #8 sur le jeton du secret
-Actions) montre Workers Scripts Read sans Edit** — carte identique à
-l'ancien jeton. Trois causes possibles et leur remède (sans créer de
-nouveau jeton) :
-
-1. **Permission non enregistrée** : CF → My Profile → API Tokens → le
-   jeton → vérifier « Workers Scripts — Edit » (portée : le compte) et
-   ENREGISTRER. Valeur inchangée → relancer B.
-2. **Nouveau jeton non reporté dans le secret** : si un nouveau jeton a
-   été créé, mettre à jour le secret `CLOUDFLARE_API_TOKEN`
-   (Settings → Secrets and variables → Actions) → relancer B.
-3. **Restriction IP** : la retirer (ou autoriser les exécutants
-   GitHub Actions) → relancer B.
-
-Ensuite : workflow **B** (staging + E2E distant 15 scénarios) puis, après
-présentation du bilan staging, workflow **C** avec la confirmation
-explicite « DEPLOYER » (production, paiements désactivés).
+État actuel : **B #17 et B #18 succès complets** (déploiement staging +
+secrets + E2E réseau 15/15). Prochaine étape : workflow **C** avec la
+confirmation explicite « DEPLOYER » (production, paiements désactivés).
 
 **Hygiène des jetons** : les deux jetons ont été collés en clair dans
 le canal de discussion. Après validation finale de la mission, il est
@@ -186,14 +191,13 @@ Ils ne sont stockés nulle part dans le dépôt ; usage local uniquement
   exacte fournie par le fondateur (17/11) : numérotation, intitulés et
   ordre stricts (03 bootstrap, 11 Vidéo finale = porte crédits,
   12 tableau de bord, 13 paiement, 14 support WhatsApp sans API).
-- Workflows : A (5 runs verts), B (run #5 vert, déploiement sauté à
-  juste titre), D (run #1 vert + artefact) sont **prouvés** ; C restera
-  NON TESTÉ jusqu'à son déclenchement manuel par le fondateur (gardé
-  volontairement derrière la confirmation « DEPLOYER »).
-- Quatre runs B intermédiaires (#1-#4) ont échoué pour des défauts du
-  **workflow lui-même** (heredocs indentés par le YAML avalant les
-  commandes — dont un faux vert détecté et corrigé —, sonde de droits
-  piégée par un 415, bits exécutables perdus) : tous corrigés, aucun
-  n'était un défaut du serveur. Journal complet dans l'onglet Actions.
+- Workflows : A (15/16 verts, dernier #16), B (derniers #17-#18 =
+  déploiements complets), D (3/3, dernier #3) sont **prouvés** ; C
+  restera NON TESTÉ jusqu'à son déclenchement manuel par le fondateur
+  (gardé volontairement derrière la confirmation « DEPLOYER »).
+- Les échecs intermédiaires de B (#1-#4 défauts de workflow ; #13-#16
+  première exécution réelle du chemin de déploiement) sont tous
+  corrigés et documentés en §5 (historique) ; aucun n'était un défaut
+  du serveur métier. Journal complet dans l'onglet Actions.
 - Aucun développement Android n'a été fait (frontière respectée) ; aucun
   ancien dépôt n'a été modifié.

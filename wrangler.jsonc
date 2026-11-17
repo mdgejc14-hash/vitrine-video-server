@@ -13,9 +13,9 @@
   //                 D1 vitrine-video-lite-production-db
   //                 PAYMENT_MODE=disabled, CINETPAY_ENABLED=false
   //
-  // Les database_id seront renseignés après création des bases D1
-  // (scripts/provision.sh -- apply automatique par le workflow de
-  // déploiement). AUCUNE ressource de l'ancien backend n'est référencée
+  // Les database_id sont les identifiants RÉELS des bases D1 créées
+  // et migrées le 17/11/2026 (staging 44694796-a758-…, production
+  // 17e6a5cf-788b-…). AUCUNE ressource de l'ancien backend n'est référencée
   // ici (ancien worker : vitrine-video-api ; anciennes D1 :
   // vitrine-video-db / vitrine-video-db-preview ; bucket B2
   // vitrine-video-media — intouchables).
