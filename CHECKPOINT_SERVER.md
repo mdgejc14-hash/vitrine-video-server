@@ -1,12 +1,12 @@
 # CHECKPOINT_SERVER.md — Point de contrôle (référence de reprise)
 
 > Mission : backend Cloudflare VITRINE VIDÉO LITE (serveur uniquement).
-> Date du point : **17/11/2026** (matinée, HEAD `3e0845d`).
-> État : **documentation alignée sur la planche officielle 14 écrans ;
-> 64/64 tests + concurrence ×15 ; défaut de course A #9 corrigé ;
-> CI verte (A #10, B #10, D #2) ; déploiement Worker BLOQUÉ : le jeton
-> du secret Actions n'a pas « Workers Scripts:Edit » (batterie d'API,
-> 2 runs consécutifs — voir §Blocage).**
+> Date du point : **17/11/2026** (matinée, HEAD après déploiement).
+> État : **STAGING DÉPLOYÉ ET PROUVÉ** — Worker
+> `vitrine-video-lite-api-staging` en ligne (workers.dev), D1 distante
+> connectée (7 tables), secrets posés, **15/15 scénarios : 12 PASS en
+> réseau réel + 3 LOCAL (FixedClock), 0 FAIL** (run B #17).
+> Production : en attente de la confirmation « DEPLOYER » du fondateur.
 
 ## Comptes EXACTS au point de contrôle
 
@@ -69,7 +69,34 @@
 - `wrangler dev` n'applique PAS les migrations localement →
   `npm run dev` = `d1 migrations apply --local` puis `wrangler dev`.
 
-## Blocage restant (UNIQUE) — diagnostic précis du 17/11 matin
+## DÉPLOIEMENT STAGING — RÉUSSI (run B #17, 17/11 07:50 UTC)
+
+- **Worker** : `vitrine-video-lite-api-staging` —
+  `https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev`
+- `/health` → 200 `{"status":"ok","environment":"staging","payment_mode":"simulation"}`
+- `/ready` → 200 `{"ready":true,"database":"connected","tables":7}`
+- **D1 distante** `vitrine-video-lite-staging-db` (44694796-…812d) : connectée
+- **Secrets posés** (noms seuls) : DEVICE_ID_HMAC_SECRET,
+  ADMIN_METRICS_TOKEN, SIMULATION_SECRET
+- **E2E distant (réseau réel)** : 12 PASS + 3 LOCAL + 0 FAIL —
+  dont Test 6 double variante (9 si gratuits restants ; 7e refusé si
+  épuisés), Test 12 paiements invalides, Test 15 métriques avec token
+- Chemin CI complet prouvé : sonde → provision → déploiement → secrets →
+  attente /health → E2E réseau
+- Défauts corrigés en route (chacun prouvé par exécution) : f-string
+  échappée (provision), `--account-id` supprimé de wrangler 4, secrets
+  APRÈS premier déploiement, activation workers.dev au 1er dépôt (code
+  10007 → retentative), propagation workers.dev (attente /health),
+  User-Agent Python-urllib bloqué par Cloudflare (UA explicite)
+
+## Ancien blocage — RÉSOLU (jeton corrigé par le fondateur)
+
+Le fondateur a régénéré le jeton avec « Workers: Edit » et
+« Workers Scripts: Edit » et mis à jour le secret Actions au bon dépôt
+(07:35:28 — le premier essai était allé par erreur dans
+`vitrine-video-d42-arena`, détecté par horodatage du secret).
+
+## Ancien diagnostic (conservé pour la traçabilité)
 
 **Opération bloquée** : `PUT /accounts/d7dac13…/workers/scripts/{nom}`
 (dépôt du script Worker — utilisé par `wrangler deploy`).

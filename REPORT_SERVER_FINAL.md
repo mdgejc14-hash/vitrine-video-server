@@ -30,8 +30,14 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
   402 parasites). Correctif `3e0845d` : re-vérification bornée (5×25 ms)
   dans le chemin d'échec du débit → replay si le gagnant insère.
   Preuve : scenario02 ×15 verts, A #10 vert ;
-- **reste UN seul verrou** : « Workers Scripts:Edit » sur le jeton du
-  secret, ou mise à jour du secret avec le jeton corrigé.
+- **VERROU LEVÉ** : jeton régénéré avec « Workers: Edit » et
+  « Workers Scripts: Edit » (premier essai déposé par erreur dans le
+  miroir `vitrine-video-d42-arena` — détecté par horodatage, corrigé
+  au bon dépôt à 07:35:28) ;
+- **STAGING DÉPLOYÉ ET PROUVÉ** (run B #17, 07:50 UTC) :
+  `https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev`
+  — `/health` 200 (simulation), `/ready` 200 (D1 connectée, 7 tables),
+  secrets posés, **E2E distant 15/15** (12 réseau + 3 FixedClock).
 
 ## 2. Verdicts par exigence
 
@@ -55,12 +61,13 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
 | Simulation staging uniquement + SIMULATION_SECRET | Test 14 : route 401 sans/mauvais secret ; production (env simulé) → 404 SIMULATION_DISABLED ; `simulated: true` dans les réponses | **VALIDÉ PAR TEST RÉEL** |
 | CinetPay désactivé partout | initiate réel non configuré → PAYMENT_PROVIDER_NOT_CONFIGURED, 0 crédit ; garde workflow C sur wrangler.jsonc | **VALIDÉ PAR TEST RÉEL** |
 | Statistiques admin + ADMIN_METRICS_TOKEN | Test 15 : 401 sans token ; métriques EXACTES (4 terminaux, 12 gratuits, 4 exports, 2 PAID/1 FAILED, ventes par formule, 8 000 XOF confirmés) ; aucune donnée individuelle | **VALIDÉ PAR TEST RÉEL** |
-| Déploiement staging puis production | `wrangler deploy` refusé : « No access to the specified resource » ; sondes API : PUT script **403**, PUT secret **403** (même sur l'ancien worker) → le jeton n'a pas « Workers Scripts:Edit » | **BLOQUÉ** (une permission à ajouter, §5) |
+| Déploiement staging | **Worker en ligne** (run B #17) : URL workers.dev, /health + /ready 200, D1 distante connectée, secrets posés, E2E réseau 15/15 | **VALIDÉ PAR TEST RÉEL** (distant) |
+| Déploiement production | Workflow C prêt (confirmation « DEPLOYER » requise) ; non lancé à ce stade | **NON TESTÉ** (attente confirmation fondateur) |
 | Dépôt GitHub `mdgejc14-hash/vitrine-video-server` | **Créé** (HTTP 201, nouveau jeton fondateur) et poussé ; SHA distant vérifié identique au local à chaque push | **VALIDÉ PAR TEST RÉEL** |
 | Workflows A (qualité) | **5 exécutions réelles sur GitHub, 5 succès** (runs #1-#5, dernier id 43992491411) : lint + typecheck + 64 tests par run | **VALIDÉ PAR TEST RÉEL** |
 | Workflows B/C/D | **B exécuté** : run #5 **succès** (id 43992491292) — tests réellement passés dans CI + sonde 403 → déploiement sauté à juste titre (runs #1-#4 en échec = bugs de workflow corrigés : heredocs indentés avalant les commandes, sonde 415, bits exécutables) ; **D exécuté** : run #1 succès (id 43992179335) + artefact checkpoint-1 (4 567 o) ; **C NON TESTÉ** (déclenchement manuel réservé au fondateur, confirmation « DEPLOYER ») | **B/D : VALIDÉ PAR TEST RÉEL · C : NON TESTÉ** |
 | Docs (OPENAPI, contrat, référence UI 14 écrans) | Livrés (ce dépôt) ; référence UI = planche officielle exacte des 14 écrans fournie par le fondateur (corrigée le 17/11) | **VALIDÉ EN SIMULATION** (statique) |
-| E2E réseau distant (staging workers.dev) | Remplacé par E2E HTTP contre Worker réel local (15/15) | **NON TESTÉ** (distant) |
+| E2E réseau distant (staging workers.dev) | **Run B #17** : 12 scénarios PASS en réseau réel + 3 expirations en FixedClock local (documenté) | **VALIDÉ PAR TEST RÉEL** (distant, hors expirations temporaires) |
 
 ## 3. Les 15 scénarios obligatoires — résultats d'exécution
 
@@ -128,7 +135,17 @@ sont consommés avant l'achat dans ce banc).
   **aucune modification** — audit lecture seule Phase 1, jamais
   référencées dans la config.
 
-## 5. Blocage restant (UNE action fondateur) — diagnostic du 17/11 matin
+## 5. Étape suivante — production (confirmation requise)
+
+Le staging est déployé, sain et prouvé (§ ci-dessus). Le déploiement
+production (workflow C) est prêt et gardé :
+- `PAYMENT_MODE=disabled`, `CINETPAY_ENABLED=false` (garde automatique
+  dans le workflow + vérification post-déploiement) ;
+- D1 production déjà créée et migrée (7 tables vérifiées) ;
+- il ne sera lancé **qu'après la confirmation explicite « DEPLOYER »**
+  du fondateur, conformément à l'instruction maîtresse.
+
+### Historique des verrous (tous résolus, pour la traçabilité)
 
 Tout est prêt (dépôt, D1 migrées, CI verte, documentation alignée) et
 **vérifié par exécution** : le déploiement échoue uniquement sur
