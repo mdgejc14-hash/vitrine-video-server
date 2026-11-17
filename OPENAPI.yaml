@@ -9,7 +9,7 @@ info:
     utilisateur, aucun e-mail, aucun mot de passe, aucun parrainage.
 
     Le serveur ne stocke NI vidéo, NI gabarit, NI donnée du formulaire
-    publicitaire (écrans 06-07 : données 100 % locales au téléphone).
+    publicitaire (écrans 06 à 10 : données 100 % locales au téléphone).
     Il gère uniquement : terminaux pseudonymisés, crédits, pass,
     autorisations d'export idempotentes, paiements (CinetPay préparé,
     désactivé) et statistiques agrégées.
@@ -113,7 +113,7 @@ paths:
   /v1/terminals/bootstrap:
     post:
       tags: [Terminaux]
-      summary: Initialiser ou retrouver un terminal
+      summary: Initialiser ou retrouver un terminal (écran 03)
       description: |
         3 crédits gratuits attribués **une seule fois** (atomique) ;
         une réinstallation avec le même ANDROID_ID ne réattribue JAMAIS
@@ -146,7 +146,7 @@ paths:
   /v1/terminals/me:
     get:
       tags: [Terminaux]
-      summary: État complet du terminal (écran Tableau de bord)
+      summary: État complet du terminal (écran 12 — Tableau de bord)
       parameters:
         - $ref: "#/components/parameters/DeviceId"
       responses:
@@ -174,7 +174,7 @@ paths:
   /v1/exports/authorize:
     post:
       tags: [Crédits & exports]
-      summary: Autoriser un export (UNE publicité = UN crédit)
+      summary: Autoriser un export (écran 11 — UNE publicité = UN crédit)
       description: |
         Enregistrer la vidéo dans la galerie puis la partager sur WhatsApp
         = la MÊME autorisation : l'application réutilise la même
@@ -237,7 +237,7 @@ paths:
   /v1/payments/initiate:
     post:
       tags: [Paiements]
-      summary: Demander un paiement de pass
+      summary: Demander un paiement de pass (écran 13)
       description: |
         Le serveur fixe SEUL le montant, les crédits et la durée (issus du
         catalogue serveur) ; le client ne transmet que `product_code`.

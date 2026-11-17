@@ -1,8 +1,8 @@
 // Routes terminaux.
 //
-// POST /v1/terminals/bootstrap — initialise ou retrouve un terminal
+// POST /v1/terminals/bootstrap (écran 03) — initialise ou retrouve un terminal
 //   (3 crédits gratuits une seule fois, jamais réattribués).
-// GET /v1/terminals/me — l'état complet pour l'écran « Tableau de bord ».
+// GET /v1/terminals/me — l'état complet pour l'écran 12 « Tableau de bord ».
 
 import { toIso, Clock } from "../clock/clock";
 import { ApiError } from "../security/errors";

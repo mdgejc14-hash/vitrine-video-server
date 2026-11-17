@@ -12,7 +12,7 @@
 - Aucun compte utilisateur, aucun e-mail, aucun mot de passe.
 - Aucun code promo, aucun parrainage, aucun ambassadeur.
 - Le serveur ne stocke **ni vidéo, ni gabarit, ni asset, ni donnée du
-  formulaire publicitaire** (écrans 06-07 : 100 % locaux au téléphone).
+  formulaire publicitaire** (écrans 06 à 10 : 100 % locaux au téléphone).
 - Identification : en-tête `X-Device-Id` = ANDROID_ID (hexadécimal 8-64).
 - Pseudonymisation : le serveur hash l'ANDROID_ID par
   **HMAC-SHA256(secret, "v1:" + android_id)** avant toute écriture.
@@ -45,9 +45,10 @@ serveur à l'initiation du paiement.
    gratuits n'expirent jamais.
 3. **Consommation** : le débit prend d'abord le **lot payant valide qui
    expire le plus tôt** ; les crédits gratuits sont préservés en dernier.
-4. **Une publicité = un crédit** (`rule: one_ad_one_credit`).
-   Enregistrer dans la galerie puis partager sur WhatsApp = **la même
-   autorisation**, obtenue avec la **même** `Idempotency-Key`.
+4. **Une publicité = un crédit** (`rule: one_ad_one_credit`, écran 11
+   « Vidéo finale » — le montage local est terminé avant la première
+   demande). Enregistrer dans la galerie puis partager sur WhatsApp =
+   **la même autorisation**, obtenue avec la **même** `Idempotency-Key`.
    - 1re demande → `201` (1 crédit débité) ;
    - rejeu (même clé) → `200`, `replay: true`, **même** `authorization.id`,
      aucun débit supplémentaire — y compris sous concurrence
@@ -65,10 +66,10 @@ serveur à l'initiation du paiement.
 | `GET /health` | — | 200 | état + environnement + mode paiement |
 | `GET /ready` | — | 200 | sonde D1 (tables attendues) |
 | `GET /v1/plans` | — | 200 | catalogue des 4 formules |
-| `POST /v1/terminals/bootstrap` | X-Device-Id | 201 / 200 | init/retrouvaille du terminal |
-| `GET /v1/terminals/me` | X-Device-Id | 200 | tableau de bord (solde, lots, pass) |
-| `POST /v1/exports/authorize` | X-Device-Id + Idempotency-Key | 201 / 200 / 402 | UNE publicité = UN crédit |
-| `POST /v1/payments/initiate` | X-Device-Id | 200 | transaction PENDING (24 h) |
+| `POST /v1/terminals/bootstrap` | X-Device-Id | 201 / 200 | init/retrouvaille du terminal (écran 03) |
+| `GET /v1/terminals/me` | X-Device-Id | 200 | tableau de bord (écran 12 : solde, lots, pass) |
+| `POST /v1/exports/authorize` | X-Device-Id + Idempotency-Key | 201 / 200 / 402 | UNE publicité = UN crédit (écran 11) |
+| `POST /v1/payments/initiate` | X-Device-Id | 200 | transaction PENDING (24 h, écran 13) |
 | `POST /v1/payments/cinetpay/webhook` | — (formulaire cpm_*) | 200 | notification CinetPay |
 | `GET /v1/admin/metrics` | Bearer ADMIN_METRICS_TOKEN | 200 | statistiques agrégées |
 | `POST /__test__/payments/settle` | Bearer SIMULATION_SECRET | 200 | **staging uniquement** |
@@ -190,7 +191,13 @@ Secrets applicatifs (générés cryptographiquement via openssl/python
   expirations validées en FixedClock.
 - Détail par scénario, verdicts et limites : REPORT_SERVER_FINAL.md.
 
-## 10. Découpage du dépôt
+## 10. Écrans sans API (référence UI officielle)
+
+Les écrans 01, 02, 04, 05, 06, 07, 08, 09, 10 et 14 (support WhatsApp)
+n'appellent **aucune API** — tout y est local. Le détail complet :
+`PRODUCT_UI_REFERENCE.md` (planche officielle des 14 écrans).
+
+## 11. Découpage du dépôt
 
 ```
 src/            services métier + routes + sécurité (TypeScript strict)

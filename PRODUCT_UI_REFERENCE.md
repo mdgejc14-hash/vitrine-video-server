@@ -1,110 +1,160 @@
-# PRODUCT_UI_REFERENCE.md — Référence UI (14 écrans) ↔ serveur
+# PRODUCT_UI_REFERENCE.md — Référence UI officielle (14 écrans) ↔ serveur
 
-> **Rôle de ce document** : définir, écran par écran, ce que l'application
-> Android VITRINE VIDÉO LITE attend du serveur et ce qui reste **local au
-> téléphone**. Le serveur est délibérément mince : il ne connaît ni
-> gabarits, ni vidéos, ni formulaires.
->
-> **Honnêteté sur la source** : la planche fondateur des 14 écrans
-> (`vitrine_video_ecran11_corrige.png`) n'a pas pu être relue
-> automatiquement dans cette session d'agent (image non visionnable
-> ici). La numérotation ci-dessous est donc **indicative** ; ce qui est
-> **contractuel** — et validé par les tests réels du serveur — c'est la
-> répartition serveur/local et les appels API de chaque écran. Les
-> libellés d'écrans sont ceux du dossier 20 gabarits (D42.34) quand ils
-> existent (E4, E4b, E6, E7, E8).
+> **Source de vérité** : planche fournie par le fondateur — 14 écrans
+> exacts, intitulés, numérotation et ordre repris ci-dessous à
+> l'identique. Ce document est une **référence fonctionnelle backend** :
+> il définit, écran par écran, ce que l'application Android attendra du
+> serveur et ce qui reste local au téléphone. Il ne constitue ni une
+> maquette, ni un développement Android (frontière absolue : serveur
+> uniquement).
 
 ## Principe directeur
 
-- **Frontière Android absolue** : le serveur ne fait AUCUNE maquette,
-  AUCUN écran, AUCUN montage. Ce document est une **référence** pour
-  l'équipe UI, pas une spécification d'écrans serveur.
-- **Écrans 06-07 (formulaire + tournage) : données 100 % LOCALES.**
-  Rien de ce que l'utilisateur y saisit ou filme n'est envoyé au serveur.
-- **Une publicité = un crédit** : la porte crédits ne s'ouvre qu'à
-  l'export finalisé, pas au partage (même autorisation, même clé).
+- **Modèle** : un téléphone = un terminal pseudonymisé = un solde de
+  crédits et des pass. Aucun compte, aucun e-mail, aucun parrainage.
+- **Écrans 01 à 10** : données et traitements **locaux** (choix, secteur,
+  gabarits, formulaire, récapitulatif, caméra, aperçu, montage). Rien de
+  ce qui s'y passe ne transite par le serveur — à l'exception du
+  bootstrap de l'écran 03.
+- **Écran 11** : la porte crédits — **une publicité finalisée = un seul
+  crédit**, que l'utilisateur enregistre puis/ou partage sur WhatsApp.
+- **Écrans 12 et 13** : tableaux de bord et paiement, alimentés par le
+  serveur.
+- **Écran 14** : support WhatsApp, aucune API.
 
-## Les 14 écrans
+## Les 14 écrans officiels
 
-| # | Écran (indicatif) | Données | Appels serveur |
-|---|---|---|---|
-| 01 | Accueil / démarrage | local | `POST /v1/terminals/bootstrap` (1re fois) — 3 crédits offerts, une seule fois |
-| 02 | Choix de la langue (FR/EN) | local | — |
-| 03 | Choix du secteur (4 secteurs) | local | — |
-| 04 | Catalogue des gabarits (5 par secteur) | local (gabarits embarqués dans l'app) | — |
-| 05 | Fiche gabarit (aperçu, durée, prises) | local | — |
-| 06 | **Brief / formulaire publicitaire (E4)** | **LOCAL** — jamais envoyé | — |
-| 07 | **Conseils puis caméra guidée (E4b + E6)** | **LOCAL** — prises jamais uploadées | — |
-| 08 | Aperçu de la vidéo (E7) | local | — |
-| 09 | Export / rendu (E8) — « porte crédits » | local (rendu sur téléphone) | `POST /v1/exports/authorize` + `Idempotency-Key` |
-| 10 | Vidéo prête / galerie | local | rejeu `POST /v1/exports/authorize` (même clé → `200 replay`, aucun débit) |
-| 11 | Partage WhatsApp | local (feuille de partage Android) | **aucun** — même autorisation que l'export (§ règle one_ad_one_credit) |
-| 12 | Tableau de bord crédits | serveur (solde) | `GET /v1/terminals/me` |
-| 13 | Offres / pass (paywall) | serveur (catalogue) | `GET /v1/plans` ; le `402` renvoie aussi `details.plans` |
-| 14 | Paiement d'un pass | serveur (transaction) | `POST /v1/payments/initiate` puis retour/notify CinetPay |
+| N° | Écran officiel | Fonction | Données | Appels serveur |
+|---|---|---|---|---|
+| 01 | Choix de la langue | Français ou English | locale | — |
+| 02 | Accueil / Bienvenue | Présentation de VITRINE VIDÉO | locale | — |
+| 03 | Chargement / Initialisation | Initialisation du terminal | serveur | `POST /v1/terminals/bootstrap` |
+| 04 | Choix du secteur | Sélection parmi les quatre secteurs | locale | — |
+| 05 | Catalogue de gabarits | Cinq gabarits du secteur choisi | locale | — |
+| 06 | Infos de la vidéo | Formulaire dynamique de personnalisation | **locale** | — |
+| 07 | Récapitulatif et confirmation | Vérification des informations | **locale** | — |
+| 08 | Caméra guidée | Enregistrement des scènes | **locale** | — |
+| 09 | Aperçu des scènes filmées | Vérification des prises | **locale** | — |
+| 10 | Montage automatique | Assemblage local de la publicité | **locale** | — |
+| 11 | Vidéo finale | Enregistrement et partage | locale (fichier) | `POST /v1/exports/authorize` + `Idempotency-Key` |
+| 12 | Tableau de bord | Solde, pass et offres | serveur | `GET /v1/terminals/me` · `GET /v1/plans` |
+| 13 | Paiement Mobile Money | Paiement avec CinetPay | serveur | `POST /v1/payments/initiate` |
+| 14 | Contacter le support | Support via WhatsApp | locale | — (aucune API) |
 
-## Détail des écrans serveur-dépendants
+## Détail écran par écran
 
-### 01 — Démarrage / bootstrap
-Au premier lancement, l'app envoie `X-Device-Id` (ANDROID_ID) à
-`POST /v1/terminals/bootstrap` → `201` avec `credits.total_usable = 3`,
-`free_credits_policy.reattributed_on_reinstall = false`. L'app affiche
-les 3 crédits. **Réinstallation** : même appel → `200`, solde réel
-conservé (peut être 0) — l'UI ne doit jamais « re-offrir » les crédits.
+### 01 — Choix de la langue
+Français ou English. Géré dans Android. Aucune API de traduction, aucune
+donnée de compte.
 
-### 09 — Export (porte crédits)
-Avant de lancer le rendu local : `POST /v1/exports/authorize` avec
-l'en-tête `Idempotency-Key` (clé stable = cette publicité-ci).
-- `201` → crédit débité, `authorization.id` à conserver ;
-- `200 replay` → même publicité déjà autorisée (ex. reprise après crash),
-  **aucun débit** — l'app poursuit l'export ;
-- `402 INSUFFICIENT_CREDITS` → écran d'offres (les plans sont dans
-  `error.details.plans`) ;
-- `429` → réessai avec backoff.
+### 02 — Accueil / Bienvenue
+Textes, images, animations et vidéos de présentation gérés localement.
+Aucune API.
 
-### 10 — Vidéo prête / galerie
-L'enregistrement en galerie et le rendu partagent l'autorisation de
-l'écran 09. Si l'app doit « ré-autoriser » (redémarrage), elle rejoue la
-MÊME `Idempotency-Key` → `200 replay`, aucun nouveau débit. C'est le
-comportement prouvé par le test 3 (idempotence, concurrence incluse).
+### 03 — Chargement / Initialisation
+Raccordement initial avec le serveur : l'application appelle
+`POST /v1/terminals/bootstrap` (en-tête `X-Device-Id` = ANDROID_ID).
+Le serveur identifie le terminal (HMAC-SHA256 côté serveur), vérifie
+s'il existe déjà, accorde **3 crédits gratuits uniquement à un nouveau
+terminal** (atomiquement — deux appels simultanés ne doublent jamais) et
+retourne le **solde réel**. Lors des ouvertures suivantes, le même
+terminal retrouve son état **sans nouveaux crédits** ; une
+réinstallation ne réattribue jamais les 3 crédits. L'application ne doit
+jamais réattribuer elle-même les crédits.
 
-### 11 — Partage WhatsApp
-Le partage utilise la feuille standard Android, fichier local.
-**Aucun appel serveur supplémentaire** : enregistrer puis partager =
-une seule et même autorisation (règle `one_ad_one_credit`).
+### 04 — Choix du secteur
+Sélection locale parmi les quatre secteurs officiels :
+1. Restaurants & Maquis (`restaurants_maquis`)
+2. Coiffure & Beauté (`coiffure_beaute`)
+3. Vêtements & Mode (`vetements_mode`)
+4. Commerce & Petites entreprises (`shops_small_business`)
+
+Aucun secteur supplémentaire. Pas d'API.
+
+### 05 — Catalogue de gabarits
+Exactement cinq gabarits par secteur (vingt au total). Les gabarits sont
+des **ressources Android** : le serveur ne les crée pas, ne les héberge
+pas, ne les stocke pas. Pas d'API de catalogue graphique.
+
+### 06 — Infos de la vidéo
+Formulaire dynamique : nom du commerce, plat ou produit mis en avant,
+prix affiché, numéro WhatsApp, localisation, accroche facultative.
+**Ces informations restent exclusivement sur le téléphone.** Aucune
+table D1, aucune API de formulaire. Ne pas confondre le prix d'un
+produit affiché dans une publicité avec le prix d'un pass VITRINE VIDÉO.
+
+### 07 — Récapitulatif et confirmation
+Présentation des informations saisies. Tout reste local. Aucune donnée
+envoyée au serveur.
+
+### 08 — Caméra guidée
+Enregistrement des scènes sur Android. **Aucun fichier vidéo transmis au
+Worker.**
+
+### 09 — Aperçu des scènes filmées
+Aperçu et vérification locaux. Aucun upload, aucune conservation serveur.
+
+### 10 — Montage automatique
+Montage, transitions, textes, musique et rendu **sur le téléphone**. Le
+serveur ne réalise aucun montage, n'héberge aucun service de rendu, ne
+stocke aucune vidéo.
+
+### 11 — Vidéo finale
+La vidéo publicitaire finalisée est présentée avec deux actions :
+**Enregistrer** et **Partager sur WhatsApp**. Ces deux actions
+concernent une seule et même publicité : **une publicité finalisée = un
+seul crédit consommé**.
+
+- Le montage local doit être **terminé** avant la première demande
+  d'autorisation.
+- Première demande (enregistrement OU partage) :
+  `POST /v1/exports/authorize` avec l'en-tête `Idempotency-Key` (clé
+  unique générée pour cette publicité, conservée avec elle).
+  - `201` → crédit débité, `authorization.id` renvoyé ;
+  - `402 INSUFFICIENT_CREDITS` → offres renvoyées (`error.details.plans`)
+    pour l'écran 12/13 ;
+  - `429` → réessai avec backoff.
+- Action suivante (partage après enregistrement, ou inversement) :
+  **rejeu de la même `Idempotency-Key`** → `200 replay`, même
+  `authorization.id`, **aucun second débit** (prouvé y compris en
+  concurrence).
+- Le fichier vidéo ne quitte jamais le téléphone.
 
 ### 12 — Tableau de bord
-`GET /v1/terminals/me` renvoie : solde (`credits.total_usable`,
-`free_remaining`, `paid_remaining`, `can_export`), tous les lots
-(`grants[]` avec `status` actif/expiré/épuisé, `expires_at`), les pass
-actifs (`active_passes[]`) et le catalogue (`plans[]`). L'UI affiche
-l'expiration au format local (le serveur fournit l'UTC ISO-8601 et
-`server_utc_now` pour la dérive d'horloge).
+Présente : solde total, crédits gratuits restants, crédits payants
+restants, pass actif, date et heure d'expiration, offres commerciales,
+bouton de création d'une vidéo. Données :
+`GET /v1/terminals/me` (solde, lots, pass actifs avec `expires_at`,
+`server_utc_now` pour la dérive d'horloge) et `GET /v1/plans`
+(catalogue). **Les crédits affichés viennent toujours du serveur**,
+jamais d'un calcul local.
 
-### 13 — Offres / paywall
-`GET /v1/plans` (ou `error.details.plans` du 402) : FREE_INSTALL
-0/3/sans expiration, PASS_EXPRESS 500/6/24 h, PASS_PRO 3000/90/30 j,
-PASS_BOUTIQUE 7500/200/30 j. Aucune promo, aucun code, aucun parrainage —
-le serveur n'expose rien d'autre.
+### 13 — Paiement Mobile Money
+`POST /v1/payments/initiate { product_code }` — l'application transmet
+uniquement le produit choisi ; le serveur fixe lui-même le prix, les
+crédits et la durée. La confirmation passe par le mécanisme officiel
+CinetPay (webhook serveur + vérification serveur-à-serveur) ; un retour
+navigateur n'est jamais une preuve. Les moyens de paiement affichés
+doivent correspondre aux méthodes **réellement proposées par CinetPay**
+dans la configuration disponible — ne pas prétendre qu'une méthode
+Mobile Money fonctionne si elle n'a pas été testée. Après retour,
+l'UI rafraîchit via `GET /v1/terminals/me`.
 
-### 14 — Paiement
-`POST /v1/payments/initiate { product_code }` → `payment` PENDING
-valable 24 h (`expires_at`). En production, l'UI ouvre la `payment_url`
-CinetPay renvoyée par le fournisseur (mécanisme à activer avec les clés
-réelles — désactivé aujourd'hui). En staging, la confirmation passe par
-le simulateur (`/__test__/payments/settle`, secret serveur uniquement —
-**jamais** dans l'app). Après retour, l'UI rafraîchit via
-`GET /v1/terminals/me` : les crédits du pass apparaissent comme un
-nouveau lot indépendant.
+### 14 — Contacter le support
+Le support s'ouvre via WhatsApp. Aucun système de ticket, aucune table
+support, aucun compte client, aucune API de messagerie.
 
 ## Règles UI à respecter (miroir du contrat serveur)
 
 1. Toujours envoyer `X-Device-Id` (ANDROID_ID) — jamais d'autre
    identifiant, jamais d'e-mail.
-2. Une `Idempotency-Key` par publicité (UUID généré à la création de la
-   publicité, conservé dans le brouillon local).
-3. Ne jamais afficher un paiement simulé comme réel (staging :
-  `simulation: true` dans les réponses).
-4. Aucune donnée des écrans 02-08 ne quitte le téléphone.
+2. Une `Idempotency-Key` par publicité, générée à la création de la
+   publicité et conservée dans le brouillon local ; jamais réutilisée
+   entre deux publicités différentes.
+3. Ne jamais afficher un paiement simulé comme réel (réponses
+   `simulation: true` / `simulated: true` en staging).
+4. Aucune donnée des écrans 04 à 10 ne quitte le téléphone.
 5. Les crédits affichés viennent toujours du serveur (`/v1/terminals/me`),
-   jamais d'un calcul local — lui seul connaît les expirations.
+   lui seul connaît les expirations.
+6. Aucun montant, aucun nombre de crédits, aucune durée n'est jamais
+   envoyé au serveur pour un paiement — uniquement `product_code`.

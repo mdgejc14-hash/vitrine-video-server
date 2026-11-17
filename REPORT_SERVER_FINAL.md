@@ -50,7 +50,7 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
 | Dépôt GitHub `mdgejc14-hash/vitrine-video-server` | **Créé** (HTTP 201, nouveau jeton fondateur) et poussé ; SHA distant vérifié identique au local à chaque push | **VALIDÉ PAR TEST RÉEL** |
 | Workflows A (qualité) | **5 exécutions réelles sur GitHub, 5 succès** (runs #1-#5, dernier id 43992491411) : lint + typecheck + 64 tests par run | **VALIDÉ PAR TEST RÉEL** |
 | Workflows B/C/D | **B exécuté** : run #5 **succès** (id 43992491292) — tests réellement passés dans CI + sonde 403 → déploiement sauté à juste titre (runs #1-#4 en échec = bugs de workflow corrigés : heredocs indentés avalant les commandes, sonde 415, bits exécutables) ; **D exécuté** : run #1 succès (id 43992179335) + artefact checkpoint-1 (4 567 o) ; **C NON TESTÉ** (déclenchement manuel réservé au fondateur, confirmation « DEPLOYER ») | **B/D : VALIDÉ PAR TEST RÉEL · C : NON TESTÉ** |
-| Docs (OPENAPI, contrat, référence UI 14 écrans) | Livrés (ce dépôt) ; référence UI : numérotation indicative (planche image non relue), répartition serveur/local contractuelle | **VALIDÉ EN SIMULATION** (statique) |
+| Docs (OPENAPI, contrat, référence UI 14 écrans) | Livrés (ce dépôt) ; référence UI = planche officielle exacte des 14 écrans fournie par le fondateur (corrigée le 17/11) | **VALIDÉ EN SIMULATION** (statique) |
 | E2E réseau distant (staging workers.dev) | Remplacé par E2E HTTP contre Worker réel local (15/15) | **NON TESTÉ** (distant) |
 
 ## 3. Les 15 scénarios obligatoires — résultats d'exécution
@@ -151,9 +151,10 @@ Ils ne sont stockés nulle part dans le dépôt ; usage local uniquement
   clés** (aucune clé existante — budget 0 FCFA, compte 501) : la
   vérification est validée au point d'injection du résultat /check.
   Le jour de l'activation, revalider par un paiement test réel CinetPay.
-- La référence UI 14 écrans : numérotation indicative (planche image non
-  relisible par l'agent) ; la répartition serveur/local et les appels
-  API sont, eux, contractuels et testés.
+- La référence UI 14 écrans a été alignée sur la planche officielle
+  exacte fournie par le fondateur (17/11) : numérotation, intitulés et
+  ordre stricts (03 bootstrap, 11 Vidéo finale = porte crédits,
+  12 tableau de bord, 13 paiement, 14 support WhatsApp sans API).
 - Workflows : A (5 runs verts), B (run #5 vert, déploiement sauté à
   juste titre), D (run #1 vert + artefact) sont **prouvés** ; C restera
   NON TESTÉ jusqu'à son déclenchement manuel par le fondateur (gardé

@@ -215,6 +215,7 @@ def t5():
 
 # ---- 6. Pass Express : 500 XOF -> 6 crédits / 24 h ------------------------
 def t6():
+    # Réalité 1 : gratuits restants -> 3 + 6 = 9 utilisables (relais §4.4).
     aid = tid("t6")
     bootstrap(aid)
     buy(aid, "PASS_EXPRESS")
@@ -224,7 +225,24 @@ def t6():
     assert_eq(len(lots), 1, "lot pass")
     assert_eq(lots[0]["credits_total"], 6, "6 crédits du pass")
     assert_eq(grant_duration(lots[0]), 86400, "validité 24 h")
-    record(6, "Pass Express 500 XOF -> 6 crédits / 24 h", True)
+
+    # Réalité 2 (banc officiel) : gratuits ÉPUISÉS avant l'achat ->
+    # strictement 6 exports payants puis 7e REFUSÉ.
+    aid2 = tid("t6s")
+    bootstrap(aid2)
+    for i in range(3):
+        st, _ = authorize(aid2, f"t6s-free-{uuid.uuid4().hex[:8]}-{i}")
+        assert_eq(st, 201, f"gratuit {i+1}")
+    _, m0 = me(aid2)
+    assert_eq(m0["credits"]["total_usable"], 0, "gratuits épuisés")
+    buy(aid2, "PASS_EXPRESS")
+    for i in range(6):
+        st, _ = authorize(aid2, f"t6s-paid-{uuid.uuid4().hex[:8]}-{i}")
+        assert_eq(st, 201, f"payant {i+1}")
+    st, body = authorize(aid2, f"t6s-refus-{uuid.uuid4().hex[:8]}")
+    assert_eq(st, 402, "7e export refusé")
+    assert_eq(body["error"]["code"], "INSUFFICIENT_CREDITS", "code 402")
+    record(6, "Pass Express 500 XOF -> 6 crédits / 24 h (9 si gratuits restants ; 7e refusé si épuisés)", True)
 
 
 # ---- 8. Pass Pro : 3 000 XOF -> 90 crédits / 30 j -------------------------

@@ -5,7 +5,7 @@ Backend **VITRINE VIDÉO LITE** — Cloudflare Worker + D1. Serveur uniquement
 
 **Modèle : 1 téléphone = 1 terminal = des crédits.** Aucun compte, aucun
 e-mail, aucun parrainage. Le serveur ne stocke ni vidéo, ni gabarit, ni
-donnée du formulaire publicitaire (écrans 06-07 : 100 % locaux).
+donnée du formulaire publicitaire (écrans 06 à 10 : 100 % locaux).
 
 ## Démarrage rapide
 
@@ -51,8 +51,8 @@ n'est committé ; les secrets applicatifs sont générés et déposés par
 
 - Bootstrap : **3 crédits gratuits une seule fois** ; réinstallation ≠
   réattribution.
-- **Une publicité = un crédit** : enregistrer puis partager sur WhatsApp =
-  la même autorisation (même `Idempotency-Key`).
+- **Une publicité = un crédit** (écran 11 Vidéo finale) : enregistrer puis
+  partager sur WhatsApp = la même autorisation (même `Idempotency-Key`).
 - Expiration stricte `now < expires_at` ; débit : lot payant expirant le
   plus tôt d'abord, gratuits préservés.
 - Paiements : montant/crédits/durée fixés par le serveur ; la notification
