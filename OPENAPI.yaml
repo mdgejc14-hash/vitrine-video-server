@@ -1,0 +1,523 @@
+openapi: 3.1.0
+info:
+  title: Vitrine Vidéo Lite — API serveur
+  version: "1.0.0"
+  description: |
+    Backend de VITRINE VIDÉO LITE (Cloudflare Worker + D1).
+
+    Modèle : **1 téléphone = 1 terminal = des crédits**. Aucun compte
+    utilisateur, aucun e-mail, aucun mot de passe, aucun parrainage.
+
+    Le serveur ne stocke NI vidéo, NI gabarit, NI donnée du formulaire
+    publicitaire (écrans 06-07 : données 100 % locales au téléphone).
+    Il gère uniquement : terminaux pseudonymisés, crédits, pass,
+    autorisations d'export idempotentes, paiements (CinetPay préparé,
+    désactivé) et statistiques agrégées.
+
+    ## Identification du terminal
+    Toute requête terminal porte l'en-tête `X-Device-Id` (ANDROID_ID
+    hexadécimal 8-64). Le serveur ne stocke JAMAIS cette valeur brute :
+    elle est hashée côté serveur par HMAC-SHA256 avec un secret
+    (`DEVICE_ID_HMAC_SECRET`) avant toute écriture D1. Les réponses ne
+    renvoient qu'un pseudonyme court (`term-xxxxxxxx`).
+
+    ## Règle centrale
+    **Une publicité = un crédit.** Enregistrer dans la galerie puis
+    partager sur WhatsApp = la MÊME autorisation (même Idempotency-Key).
+
+    ## Formats
+    - Corps JSON (sauf webhook CinetPay : `application/x-www-form-urlencoded`).
+    - Dates : ISO-8601 UTC (millisecondes), ex. `2026-11-17T00:13:52.019Z`.
+    - Erreurs normalisées : `{ "error": { "code", "message", "request_id" } }`.
+servers:
+  - url: https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev
+    description: Staging (paiements en SIMULATION)
+  - url: https://vitrine-video-lite-api.mdgejcinfluence.workers.dev
+    description: Production (paiements DÉSACTIVÉS)
+
+tags:
+  - name: Santé
+  - name: Terminaux
+  - name: Crédits & exports
+  - name: Formules
+  - name: Paiements
+  - name: Simulation (staging)
+  - name: Administration
+
+paths:
+  /health:
+    get:
+      tags: [Santé]
+      summary: État du service (sans authentification)
+      responses:
+        "200":
+          description: Service en ligne
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service, version, environment, payment_mode, utc_now]
+                properties:
+                  status: { type: string, const: ok }
+                  service: { type: string, const: vitrine-video-lite-api }
+                  version: { type: string }
+                  environment: { type: string, enum: [staging, production] }
+                  payment_mode: { type: string, enum: [simulation, disabled, real] }
+                  utc_now: { $ref: "#/components/schemas/IsoDate" }
+              example:
+                status: ok
+                service: vitrine-video-lite-api
+                version: "1.0.0"
+                environment: staging
+                payment_mode: simulation
+                utc_now: "2026-11-17T00:13:00.873Z"
+
+  /ready:
+    get:
+      tags: [Santé]
+      summary: Sonde de disponibilité (vérifie D1)
+      responses:
+        "200":
+          description: Prêt (base connectée)
+          content:
+            application/json:
+              example:
+                ready: true
+                database: connected
+                tables: 7
+
+  /v1/plans:
+    get:
+      tags: [Formules]
+      summary: Catalogue des formules (source serveur, figée)
+      responses:
+        "200":
+          description: Les 4 formules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  currency: { type: string, const: XOF }
+                  plans:
+                    type: array
+                    items: { $ref: "#/components/schemas/Plan" }
+              example:
+                currency: XOF
+                plans:
+                  - { code: FREE_INSTALL, label: "Découverte gratuite", kind: free, price_xof: 0, currency: XOF, credits: 3, duration_s: null }
+                  - { code: PASS_EXPRESS, label: "Pass Express", kind: pass, price_xof: 500, currency: XOF, credits: 6, duration_s: 86400 }
+                  - { code: PASS_PRO, label: "Pass Pro", kind: pass, price_xof: 3000, currency: XOF, credits: 90, duration_s: 2592000 }
+                  - { code: PASS_BOUTIQUE, label: "Pass Boutique", kind: pass, price_xof: 7500, currency: XOF, credits: 200, duration_s: 2592000 }
+
+  /v1/terminals/bootstrap:
+    post:
+      tags: [Terminaux]
+      summary: Initialiser ou retrouver un terminal
+      description: |
+        3 crédits gratuits attribués **une seule fois** (atomique) ;
+        une réinstallation avec le même ANDROID_ID ne réattribue JAMAIS
+        les crédits et ne réinitialise rien.
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                app_version: { type: string, maxLength: 32 }
+                platform: { type: string, maxLength: 32 }
+            example: { app_version: "1.0.0", platform: android }
+      responses:
+        "201":
+          description: Terminal créé (premier bootstrap)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BootstrapResponse" }
+        "200":
+          description: Terminal déjà connu (réinstallation) — solde conservé
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BootstrapResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/terminals/me:
+    get:
+      tags: [Terminaux]
+      summary: État complet du terminal (écran Tableau de bord)
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Solde, lots de crédits, pass actifs, formules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  terminal: { $ref: "#/components/schemas/Terminal" }
+                  credits: { $ref: "#/components/schemas/Credits" }
+                  grants:
+                    type: array
+                    items: { $ref: "#/components/schemas/Grant" }
+                  active_passes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Grant" }
+                  plans:
+                    type: array
+                    items: { $ref: "#/components/schemas/Plan" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/exports/authorize:
+    post:
+      tags: [Crédits & exports]
+      summary: Autoriser un export (UNE publicité = UN crédit)
+      description: |
+        Enregistrer la vidéo dans la galerie puis la partager sur WhatsApp
+        = la MÊME autorisation : l'application réutilise la même
+        `Idempotency-Key` pour les deux actions.
+
+        Un rejeu avec la même clé renvoie l'autorisation existante
+        (200, `replay: true`) sans débiter à nouveau.
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: "Clé stable pour une même publicité (8-128 car. alphanum. . _ : -)"
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: Autorisation créée (1 crédit débité)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthorizeResponse" }
+        "200":
+          description: Rejeu idempotent — même autorisation, aucun débit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthorizeResponse" }
+        "402":
+          description: Aucun crédit utilisable (les offres sont renvoyées)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Error"
+                  - type: object
+                    properties:
+                      error:
+                        type: object
+                        properties:
+                          code: { type: string, const: INSUFFICIENT_CREDITS }
+                          details:
+                            type: object
+                            properties:
+                              plans:
+                                type: array
+                                items: { $ref: "#/components/schemas/Plan" }
+              example:
+                error:
+                  code: INSUFFICIENT_CREDITS
+                  message: Aucun crédit utilisable.
+                  request_id: d9768f8c-fe7d-4c54-aad4-e91b44e9668c
+                  details:
+                    plans:
+                      - { code: PASS_EXPRESS, label: "Pass Express", kind: pass, price_xof: 500, currency: XOF, credits: 6, duration_s: 86400 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/payments/initiate:
+    post:
+      tags: [Paiements]
+      summary: Demander un paiement de pass
+      description: |
+        Le serveur fixe SEUL le montant, les crédits et la durée (issus du
+        catalogue serveur) ; le client ne transmet que `product_code`.
+        Transaction valable 24 h. Aucun crédit à l'initiation.
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_code]
+              properties:
+                product_code:
+                  type: string
+                  enum: [PASS_EXPRESS, PASS_PRO, PASS_BOUTIQUE]
+            example: { product_code: PASS_EXPRESS }
+      responses:
+        "200":
+          description: Transaction PENDING créée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      merchant_transaction_id: { type: string, example: VVL-20261117T001359-0C6C521D3B }
+                      product_code: { type: string }
+                      amount: { type: integer, example: 500 }
+                      currency: { type: string, const: XOF }
+                      payment_status: { type: string, const: PENDING }
+                      expires_at: { $ref: "#/components/schemas/IsoDate" }
+                      created_at: { $ref: "#/components/schemas/IsoDate" }
+                  simulation:
+                    type: boolean
+                    description: true quand la confirmation passera par le simulateur staging
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: Formule inconnue ou non achetable (INVALID_PRODUCT)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/payments/cinetpay/webhook:
+    post:
+      tags: [Paiements]
+      summary: Notification CinetPay (IPN)
+      description: |
+        Format officiel CinetPay : POST `application/x-www-form-urlencoded`
+        (champs `cpm_*`). **La notification n'est PAS une preuve** : avant
+        tout crédit, le serveur appelle lui-même
+        `POST https://api-checkout.cinetpay.com/v2/payment/check` avec sa
+        clé API secrète et valide : cpm_result == "00",
+        cpm_trans_status == "ACCEPTED", montant strictement égal,
+        devise et site_id exacts. Réponse 200 systématique une fois la
+        notification journalisée (pour arrêter les re-notifications).
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [cpm_trans_id]
+              properties:
+                cpm_trans_id: { type: string, description: ID transaction marchand }
+                cpm_payid: { type: string }
+                cpm_site_id: { type: string }
+                cpm_amount: { type: string }
+                cpm_currency: { type: string }
+                signature: { type: string }
+      responses:
+        "200":
+          description: Notification traitée (créditée, rejetée ou déjà vue)
+          content:
+            application/json:
+              example:
+                received: true
+                credited: false
+                already: false
+                duplicate: false
+                reason: PROVIDER_NOT_CONFIGURED
+                processed_at: "2026-11-17T00:13:52.101Z"
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/admin/metrics:
+    get:
+      tags: [Administration]
+      summary: Statistiques agrégées (aucune donnée individuelle)
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: Métriques globales
+          content:
+            application/json:
+              example:
+                generated_at: "2026-11-17T00:13:52.202Z"
+                terminals: { initialized: 23, active_last_30d: 23 }
+                credits: { free_granted_total: 69, exports_authorized: 15, credits_consumed_total: 15 }
+                payments: { pending: 0, confirmed: 10, failed: 2, cancelled: 0 }
+                sales: { PASS_EXPRESS: 4, PASS_PRO: 4, PASS_BOUTIQUE: 2 }
+                revenue: { confirmed_xof: 29000, currency: XOF }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /__test__/payments/settle:
+    post:
+      tags: [Simulation (staging)]
+      summary: Simulateur de règlement — STAGING UNIQUEMENT
+      description: |
+        N'existe qu'en staging (404 `SIMULATION_DISABLED` en production).
+        Exige le secret de simulation (Bearer). Utilise le MÊME service
+        interne que le webhook CinetPay réel, avec le produit et le
+        montant ENREGISTRÉS à l'initiation. Un simulé n'est jamais
+        présenté comme un paiement réel (`simulated: true`).
+      security:
+        - simulationSecret: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [merchant_transaction_id, outcome]
+              properties:
+                merchant_transaction_id: { type: string }
+                outcome: { type: string, enum: [success, failure] }
+            example: { merchant_transaction_id: "VVL-20261117T001359-0C6C521D3B", outcome: success }
+      responses:
+        "200":
+          description: Règlement simulé traité
+          content:
+            application/json:
+              example:
+                settled: true
+                credited: true
+                already: false
+                duplicate: false
+                reason: null
+                grant: { credits: 90, expires_at: "2026-12-17T00:13:59.096Z" }
+                simulated: true
+                processed_at: "2026-11-17T00:13:59.099Z"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Environnement production (endpoint inexistant)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  parameters:
+    DeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      description: ANDROID_ID du terminal (hexadécimal 8-64) — jamais stocké en clair
+      schema: { type: string }
+
+  securitySchemes:
+    adminToken:
+      type: http
+      scheme: bearer
+      description: ADMIN_METRICS_TOKEN
+    simulationSecret:
+      type: http
+      scheme: bearer
+      description: SIMULATION_SECRET (staging)
+
+  schemas:
+    IsoDate:
+      type: string
+      format: date-time
+      example: "2026-11-17T00:13:52.019Z"
+
+    Plan:
+      type: object
+      properties:
+        code: { type: string, enum: [FREE_INSTALL, PASS_EXPRESS, PASS_PRO, PASS_BOUTIQUE] }
+        label: { type: string }
+        kind: { type: string, enum: [free, pass] }
+        price_xof: { type: integer }
+        currency: { type: string, const: XOF }
+        credits: { type: integer }
+        duration_s: { type: [integer, "null"], description: null = sans expiration }
+
+    Terminal:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        pseudonym: { type: string, example: term-df1d9774 }
+        first_seen_at: { $ref: "#/components/schemas/IsoDate" }
+        last_seen_at: { $ref: "#/components/schemas/IsoDate" }
+        status: { type: string, enum: [active] }
+        server_utc_now: { $ref: "#/components/schemas/IsoDate" }
+
+    Credits:
+      type: object
+      properties:
+        total_usable: { type: integer }
+        free_remaining: { type: integer }
+        paid_remaining: { type: integer }
+        can_export: { type: boolean }
+
+    Grant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [free_install, pass] }
+        product_code: { type: string }
+        credits_total: { type: integer }
+        credits_remaining: { type: integer }
+        starts_at: { $ref: "#/components/schemas/IsoDate" }
+        expires_at: { type: [string, "null"] }
+        status: { type: string, enum: [active, expired, exhausted] }
+
+    BootstrapResponse:
+      type: object
+      properties:
+        terminal: { $ref: "#/components/schemas/Terminal" }
+        created: { type: boolean }
+        credits: { $ref: "#/components/schemas/Credits" }
+        free_credits_policy:
+          type: object
+          properties:
+            credits: { type: integer, const: 3 }
+            expires: { type: boolean, const: false }
+            reattributed_on_reinstall: { type: boolean, const: false }
+        plans:
+          type: array
+          items: { $ref: "#/components/schemas/Plan" }
+
+    AuthorizeResponse:
+      type: object
+      properties:
+        authorization:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            status: { type: string, const: active }
+            authorized_at: { $ref: "#/components/schemas/IsoDate" }
+            idempotency_key: { type: string }
+        replay: { type: boolean }
+        rule: { type: string, const: one_ad_one_credit }
+        credits: { $ref: "#/components/schemas/Credits" }
+        authorized_at_utc: { $ref: "#/components/schemas/IsoDate" }
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum:
+                [
+                  INVALID_REQUEST, INVALID_DEVICE_ID, MISSING_DEVICE_ID,
+                  MISSING_IDEMPOTENCY_KEY, INVALID_IDEMPOTENCY_KEY,
+                  INVALID_PRODUCT, NOT_FOUND, UNAUTHORIZED,
+                  INSUFFICIENT_CREDITS, SIMULATION_DISABLED,
+                  RATE_LIMITED, INTERNAL_ERROR,
+                ]
+            message: { type: string }
+            request_id: { type: string, format: uuid }
+            details: { type: object }
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Authentification manquante ou invalide
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Trop de requêtes (fenêtre 60 s)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

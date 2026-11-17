@@ -1,0 +1,49 @@
+name: "A — Qualité (lint, types, 15 scénarios locaux)"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    name: Lint + typecheck + tests (15 scénarios)
+    runs-on: ubuntu-latest
+    # Aucun secret nécessaire : les tests tournent sur workerd/D1 local
+    # via vitest-pool-workers avec des constantes de test non secrètes.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      # Constantes de test non secrètes (identiques à wrangler.test.jsonc) :
+      # le fichier .dev.vars est gitignore, on le matérialise pour que le
+      # runtime de test soit strictement identique local ↔ CI.
+      - name: Constantes de test (.dev.vars)
+        run: |
+          cat > .dev.vars <<'EOF'
+          DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef
+          ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef
+          SIMULATION_SECRET=test-simulation-secret-0123456789abcdef
+          EOF
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Tests — 15 scénarios (workerd + D1 réels)
+        run: npm test
+
+      - name: Résumé
+        if: always()
+        run: |
+          echo "## Qualité — résultat" >> $GITHUB_STEP_SUMMARY
+          echo "lint + typecheck + suite complète (15 scénarios obligatoires)" >> $GITHUB_STEP_SUMMARY

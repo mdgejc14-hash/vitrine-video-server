@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.local
+coverage/
+*.log
+.DS_Store
+# Rapports E2E locaux (régénérés) — les preuves canoniques sont archivées
+# volontairement dans tests/e2e/results/ (voir scripts/e2e-runner.sh).
+/tmp/
+.provision-secrets/

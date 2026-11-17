@@ -1,0 +1,64 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // =====================================================================
+  // VITRINE VIDEO LITE — API serveur (Cloudflare Worker + D1)
+  // Compte Cloudflare : d7dac13da931423a19812f6d9116bd47 (non-secret,
+  // déjà public dans les configs de l'ancien projet).
+  //
+  // DEUX environnements STRICTEMENT séparés :
+  //  - staging    : Worker vitrine-video-lite-api-staging
+  //                 D1 vitrine-video-lite-staging-db
+  //                 PAYMENT_MODE=simulation, CINETPAY_ENABLED=false
+  //  - production : Worker vitrine-video-lite-api
+  //                 D1 vitrine-video-lite-production-db
+  //                 PAYMENT_MODE=disabled, CINETPAY_ENABLED=false
+  //
+  // Les database_id seront renseignés après création des bases D1
+  // (scripts/provision.sh -- apply automatique par le workflow de
+  // déploiement). AUCUNE ressource de l'ancien backend n'est référencée
+  // ici (ancien worker : vitrine-video-api ; anciennes D1 :
+  // vitrine-video-db / vitrine-video-db-preview ; bucket B2
+  // vitrine-video-media — intouchables).
+  // =====================================================================
+  "name": "vitrine-video-lite-api-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-06",
+  "workers_dev": true,
+  "observability": {
+    "logs": { "enabled": true, "head_sampling_rate": 1, "invocation_logs": false }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "vitrine-video-lite-staging-db",
+      "database_id": "PENDING_D1_CREATION_STAGING"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "staging",
+    "PAYMENT_MODE": "simulation",
+    "CINETPAY_ENABLED": "false",
+    "CINETPAY_ENV": "test",
+    "API_VERSION": "1.0.0"
+  },
+  "env": {
+    "production": {
+      "name": "vitrine-video-lite-api",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "vitrine-video-lite-production-db",
+          "database_id": "PENDING_D1_CREATION_PRODUCTION"
+        }
+      ],
+      "vars": {
+        "ENVIRONMENT": "production",
+        "PAYMENT_MODE": "disabled",
+        "CINETPAY_ENABLED": "false",
+        "CINETPAY_ENV": "test",
+        "API_VERSION": "1.0.0"
+      }
+    }
+  }
+}

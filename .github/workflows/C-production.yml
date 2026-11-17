@@ -1,0 +1,137 @@
+name: "C — Déploiement production (paiements désactivés)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Taper DEPLOYER pour confirmer (paiements resteront désactivés)"
+        required: true
+        default: ""
+
+jobs:
+  production:
+    name: Provision production + déploiement (PAYMENT_MODE=disabled)
+    runs-on: ubuntu-latest
+    # GARDE ANTI-FORK : jamais de secret hors du dépôt officiel.
+    if: >
+      github.repository == 'mdgejc14-hash/vitrine-video-server' &&
+      github.event.inputs.confirm == 'DEPLOYER'
+    permissions:
+      contents: read
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Qualité locale (lint + types + 15 scénarios workerd/D1)
+        run: |
+          cat > .dev.vars <<'EOF'
+          DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef
+          ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef
+          SIMULATION_SECRET=test-simulation-secret-0123456789abcdef
+          EOF
+          npm run lint
+          npm run typecheck
+          npm test
+
+      # Vérification EXPLICITE : la production doit avoir
+      # PAYMENT_MODE=disabled et CINETPAY_ENABLED=false dans wrangler.jsonc.
+      - name: Garde production (paiements désactivés obligatoires)
+        run: |
+          python3 - <<'PYEOF'
+          import json, re, sys
+          s = open("wrangler.jsonc").read()
+          s = re.sub(r"//[^\n]*", "", s)
+          cfg = json.loads(s)
+          prod = cfg["env"]["production"]["vars"]
+          assert prod["PAYMENT_MODE"] == "disabled", f"PAYMENT_MODE={prod['PAYMENT_MODE']} ≠ disabled"
+          assert prod["CINETPAY_ENABLED"] == "false", f"CINETPAY_ENABLED={prod['CINETPAY_ENABLED']} ≠ false"
+          print("OK : production PAYMENT_MODE=disabled, CINETPAY_ENABLED=false")
+          PYEOF
+
+      - name: "Vérification — aucun secret dans le dépôt"
+        run: |
+          ! grep -rInE "(CINETPAY_API_KEY|SECRET_KEY)[\"']?\s*[:=]\s*[\"'][A-Za-z0-9]{8,}" \
+            --include="*.ts" --include="*.jsonc" --include="*.json" --include="*.yml" . \
+            --exclude-dir=node_modules || {
+              echo "!! Un secret semble committé" >&2; exit 1; }
+
+      # Secrets production : persistés dans le cache Actions, masqués.
+      # PAS de SIMULATION_SECRET en production.
+      - name: Cache des secrets production (valeurs masquées)
+        uses: actions/cache@v4
+        with:
+          path: .provision-secrets
+          key: production-secrets-v1
+
+      - name: Préparation des secrets production
+        id: secrets
+        run: |
+          mkdir -p .provision-secrets
+          if [[ ! -f .provision-secrets/production.json ]]; then
+            python3 - <<'PYEOF'
+            import json, secrets as pysecrets
+            with open(".provision-secrets/production.json", "w") as f:
+                json.dump({
+                    "PROD_DEVICE_ID_HMAC_SECRET": pysecrets.token_hex(32),
+                    "PROD_ADMIN_METRICS_TOKEN":   pysecrets.token_hex(32),
+                }, f)
+            PYEOF
+            echo "nouveaux secrets production générés"
+          else
+            echo "secrets production réutilisés depuis le cache"
+          fi
+          for k in PROD_DEVICE_ID_HMAC_SECRET PROD_ADMIN_METRICS_TOKEN; do
+            v=$(python3 -c "import json;print(json.load(open('.provision-secrets/production.json'))['$k'])")
+            echo "::add-mask::$v"
+            echo "$k=$v" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Provision D1 production + migrations + secrets
+        if: env.CF_TOKEN != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PROD_DEVICE_ID_HMAC_SECRET: ${{ steps.secrets.outputs.PROD_DEVICE_ID_HMAC_SECRET }}
+          PROD_ADMIN_METRICS_TOKEN: ${{ steps.secrets.outputs.PROD_ADMIN_METRICS_TOKEN }}
+        run: ./scripts/provision.sh --apply-config --only production
+
+      - name: Déploiement du Worker production
+        if: env.CF_TOKEN != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --env production
+
+      - name: "Vérification post-déploiement (/health production)"
+        if: env.CF_TOKEN != ''
+        run: |
+          sleep 10
+          curl -fsS --max-time 30 \
+            https://vitrine-video-lite-api.mdgejcinfluence.workers.dev/health \
+            -o health-prod.json
+          python3 - <<'PYEOF'
+          import json
+          h = json.load(open("health-prod.json"))
+          assert h["environment"] == "production", h
+          assert h["payment_mode"] == "disabled", h
+          print("OK : production en ligne, paiements désactivés :", h)
+          PYEOF
+
+      - name: wrangler.jsonc canonique restauré
+        if: always()
+        run: git checkout -- wrangler.jsonc 2>/dev/null || true
+
+      - name: Résumé
+        if: always()
+        run: |
+          echo "## C — production" >> $GITHUB_STEP_SUMMARY
+          echo "- Déploiement : ${{ env.CF_TOKEN != '' && 'effectué' || 'BLOQUÉ (CLOUDFLARE_API_TOKEN absent)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Paiements : DÉSACTIVÉS (PAYMENT_MODE=disabled, CINETPAY_ENABLED=false)" >> $GITHUB_STEP_SUMMARY

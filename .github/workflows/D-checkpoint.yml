@@ -1,0 +1,105 @@
+name: "D — Checkpoint (état, santé, preuves)"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # chaque lundi 06:00 UTC
+
+jobs:
+  checkpoint:
+    name: Point de contrôle du serveur
+    runs-on: ubuntu-latest
+    # GARDE ANTI-FORK : le checkpoint officiel n'existe que pour le dépôt
+    # officiel (aucun secret utilisé, mais l'artefact doit être canonique).
+    if: github.repository == 'mdgejc14-hash/vitrine-video-server'
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Exécution complète des preuves locales (15 scénarios)
+        id: preuves
+        continue-on-error: true
+        run: |
+          cat > .dev.vars <<'EOF'
+          DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef
+          ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef
+          SIMULATION_SECRET=test-simulation-secret-0123456789abcdef
+          EOF
+          npm run lint || echo "lint" >> quality-failures.txt
+          npm run typecheck || echo "typecheck" >> quality-failures.txt
+          set +e
+          npx vitest run --reporter=json --outputFile=test-results.json
+          echo $? > test-exit.txt
+          exit 0
+
+      - name: Sonde /health staging (si déployé)
+        id: staging
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 20 \
+            https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev/health \
+            > health-staging.json || echo '{"unreachable": true}' > health-staging.json
+          cat health-staging.json
+
+      - name: Sonde /health production (si déployée)
+        id: production
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 20 \
+            https://vitrine-video-lite-api.mdgejcinfluence.workers.dev/health \
+            > health-production.json || echo '{"unreachable": true}' > health-production.json
+          cat health-production.json
+
+      - name: Rédaction du checkpoint
+        run: |
+          python3 - <<'PYEOF'
+          import json, datetime, os, pathlib
+          exit_code = pathlib.Path("test-exit.txt").read_text().strip()
+          tests = {}
+          if pathlib.Path("test-results.json").exists():
+              r = json.loads(pathlib.Path("test-results.json").read_text())
+              tests = {
+                  "total": r.get("numTotalTests"),
+                  "passed": r.get("numPassedTests"),
+                  "failed": r.get("numFailedTests"),
+              }
+          def probe(name):
+              p = pathlib.Path(f"health-{name}.json")
+              return json.loads(p.read_text()) if p.exists() else {"unreachable": True}
+          failures = pathlib.Path("quality-failures.txt")
+          cp = {
+              "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "repository": "mdgejc14-hash/vitrine-video-server",
+              "commit": os.environ.get("GITHUB_SHA", "inconnu"),
+              "quality_failures": failures.read_text().split() if failures.exists() else [],
+              "local_suite": {"exit_code": exit_code, **tests},
+              "staging_health": probe("staging"),
+              "production_health": probe("production"),
+              "note": "Checkpoint automatique — référence de reprise.",
+          }
+          pathlib.Path("CHECKPOINT_AUTOMATIQUE.json").write_text(
+              json.dumps(cp, indent=2, ensure_ascii=False))
+          print(json.dumps(cp, indent=2, ensure_ascii=False))
+          PYEOF
+
+      - name: Archive du checkpoint (artefact, jamais de push main)
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint-${{ github.run_number }}
+          path: |
+            CHECKPOINT_AUTOMATIQUE.json
+            test-results.json
+            health-staging.json
+            health-production.json
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,11 @@
+# Secrets locaux wrangler dev (copier en .dev.vars, JAMAIS commiter).
+# En staging/production distants : wrangler secret put <NOM> (jamais dans le dépôt).
+DEVICE_ID_HMAC_SECRET=          # >= 32 caractères, openssl rand -hex 32
+ADMIN_METRICS_TOKEN=            # >= 32 caractères, openssl rand -hex 24
+SIMULATION_SECRET=              # staging uniquement, openssl rand -hex 24
+# CinetPay — NON configurés à ce jour (paiements réels désactivés).
+CINETPAY_API_KEY=
+CINETPAY_SITE_ID=
+CINETPAY_SECRET_KEY=
+# Double local pour les bancs E2E UNIQUEMENT (défaut : API officielle CinetPay).
+# CINETPAY_API_BASE=http://127.0.0.1:8788

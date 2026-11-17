@@ -1,0 +1,128 @@
+name: "B — Déploiement staging + E2E réseau"
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "URL de base du Worker staging (déjà déployé)"
+        required: false
+        default: "https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev"
+  push:
+    branches: [main]
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  staging-e2e:
+    name: Provision + déploiement staging + scénarios HTTP
+    runs-on: ubuntu-latest
+    # GARDE ANTI-FORK : jamais de secret hors du dépôt officiel.
+    if: github.repository == 'mdgejc14-hash/vitrine-video-server'
+    permissions:
+      contents: read
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Qualité locale (lint + types + 15 scénarios workerd/D1)
+        run: |
+          cat > .dev.vars <<'EOF'
+          DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef
+          ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef
+          SIMULATION_SECRET=test-simulation-secret-0123456789abcdef
+          EOF
+          npm run lint
+          npm run typecheck
+          npm test
+
+      # ------------------------------------------------------------------
+      # Secrets applicatifs staging : générés une fois puis PERSISTÉS dans
+      # le cache Actions (jamais dans le dépôt, jamais dans les journaux —
+      # chaque valeur est masquée par add-mask). Pas de rotation du secret
+      # HMAC : les hash de terminaux restent stables d'un déploiement à
+      # l'autre.
+      # ------------------------------------------------------------------
+      - name: Cache des secrets staging (valeurs masquées)
+        uses: actions/cache@v4
+        with:
+          path: .provision-secrets
+          key: staging-secrets-v1
+
+      - name: Préparation des secrets (génération si absents)
+        id: secrets
+        run: |
+          mkdir -p .provision-secrets
+          if [[ ! -f .provision-secrets/staging.json ]]; then
+            python3 - <<'PYEOF'
+            import json, secrets as pysecrets
+            with open(".provision-secrets/staging.json", "w") as f:
+                json.dump({
+                    "DEVICE_ID_HMAC_SECRET": pysecrets.token_hex(32),
+                    "ADMIN_METRICS_TOKEN":   pysecrets.token_hex(32),
+                    "SIMULATION_SECRET":     pysecrets.token_hex(32),
+                }, f)
+            PYEOF
+            echo "nouveaux secrets staging générés (rotation impossible ensuite)"
+          else
+            echo "secrets staging réutilisés depuis le cache (hash stables)"
+          fi
+          for k in DEVICE_ID_HMAC_SECRET ADMIN_METRICS_TOKEN SIMULATION_SECRET; do
+            v=$(python3 -c "import json;print(json.load(open('.provision-secrets/staging.json'))['$k'])")
+            echo "::add-mask::$v"
+            echo "$k=$v" >> "$GITHUB_OUTPUT"
+          done
+
+      # ------------------------------------------------------------------
+      # Provision D1 STAGING UNIQUEMENT (création si absente — jamais de
+      # suppression), migrations non destructives, secrets au Worker.
+      # ------------------------------------------------------------------
+      - name: Provision D1 staging + migrations + secrets
+        if: env.CF_TOKEN != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          DEVICE_ID_HMAC_SECRET: ${{ steps.secrets.outputs.DEVICE_ID_HMAC_SECRET }}
+          ADMIN_METRICS_TOKEN: ${{ steps.secrets.outputs.ADMIN_METRICS_TOKEN }}
+          SIMULATION_SECRET: ${{ steps.secrets.outputs.SIMULATION_SECRET }}
+        run: ./scripts/provision.sh --apply-config --only staging
+
+      - name: Déploiement du Worker staging
+        if: env.CF_TOKEN != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy
+
+      # ------------------------------------------------------------------
+      # E2E réseau : scénarios rejoués en HTTP réel (terminaux de test
+      # dédiés e2e-test-*, aucune donnée réelle). Tests 7/9/11 (expirations
+      # exactes 24 h / 30 j) : validés par l'étape locale (FixedClock).
+      # ------------------------------------------------------------------
+      - name: E2E staging (scénarios HTTP)
+        if: env.CF_TOKEN != ''
+        env:
+          BASE_URL: ${{ inputs.base_url || 'https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev' }}
+          SIMULATION_SECRET: ${{ steps.secrets.outputs.SIMULATION_SECRET }}
+          ADMIN_METRICS_TOKEN: ${{ steps.secrets.outputs.ADMIN_METRICS_TOKEN }}
+        run: ./scripts/e2e-runner.sh staging
+
+      - name: wrangler.jsonc canonique restauré (rien à committer)
+        if: always()
+        run: git checkout -- wrangler.jsonc 2>/dev/null || true
+
+      - name: Résumé
+        if: always()
+        run: |
+          echo "## B — staging" >> $GITHUB_STEP_SUMMARY
+          echo "- Déploiement : ${{ env.CF_TOKEN != '' && 'effectué' || 'SAUTÉ (CLOUDFLARE_API_TOKEN absent) — tests locaux seulement' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Qualité locale : lint + typecheck + 15 scénarios" >> $GITHUB_STEP_SUMMARY
