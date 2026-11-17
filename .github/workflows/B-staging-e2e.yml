@@ -39,11 +39,10 @@ jobs:
 
       - name: Qualité locale (lint + types + 15 scénarios workerd/D1)
         run: |
-          cat > .dev.vars <<'EOF'
-          DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef
-          ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef
-          SIMULATION_SECRET=test-simulation-secret-0123456789abcdef
-          EOF
+          printf '%s\n' \
+            "DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef" \
+            "ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef" \
+            "SIMULATION_SECRET=test-simulation-secret-0123456789abcdef" > .dev.vars
           npm run lint
           npm run typecheck
           npm test
@@ -66,15 +65,7 @@ jobs:
         run: |
           mkdir -p .provision-secrets
           if [[ ! -f .provision-secrets/staging.json ]]; then
-            python3 - <<'PYEOF'
-            import json, secrets as pysecrets
-            with open(".provision-secrets/staging.json", "w") as f:
-                json.dump({
-                    "DEVICE_ID_HMAC_SECRET": pysecrets.token_hex(32),
-                    "ADMIN_METRICS_TOKEN":   pysecrets.token_hex(32),
-                    "SIMULATION_SECRET":     pysecrets.token_hex(32),
-                }, f)
-            PYEOF
+            python3 -c "import json,secrets as s; json.dump({k:s.token_hex(32) for k in ('DEVICE_ID_HMAC_SECRET','ADMIN_METRICS_TOKEN','SIMULATION_SECRET')}, open('.provision-secrets/staging.json','w'))"
             echo "nouveaux secrets staging générés (rotation impossible ensuite)"
           else
             echo "secrets staging réutilisés depuis le cache (hash stables)"

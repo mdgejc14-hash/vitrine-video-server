@@ -20,6 +20,7 @@ jobs:
       contents: read
     env:
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: d7dac13da931423a19812f6d9116bd47
 
     steps:
       - uses: actions/checkout@v4
@@ -34,11 +35,10 @@ jobs:
 
       - name: Qualité locale (lint + types + 15 scénarios workerd/D1)
         run: |
-          cat > .dev.vars <<'EOF'
-          DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef
-          ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef
-          SIMULATION_SECRET=test-simulation-secret-0123456789abcdef
-          EOF
+          printf '%s\n' \
+            "DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef" \
+            "ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef" \
+            "SIMULATION_SECRET=test-simulation-secret-0123456789abcdef" > .dev.vars
           npm run lint
           npm run typecheck
           npm test
@@ -47,16 +47,16 @@ jobs:
       # PAYMENT_MODE=disabled et CINETPAY_ENABLED=false dans wrangler.jsonc.
       - name: Garde production (paiements désactivés obligatoires)
         run: |
-          python3 - <<'PYEOF'
-          import json, re, sys
+          python3 -c '
+          import json, re
           s = open("wrangler.jsonc").read()
           s = re.sub(r"//[^\n]*", "", s)
           cfg = json.loads(s)
           prod = cfg["env"]["production"]["vars"]
-          assert prod["PAYMENT_MODE"] == "disabled", f"PAYMENT_MODE={prod['PAYMENT_MODE']} ≠ disabled"
-          assert prod["CINETPAY_ENABLED"] == "false", f"CINETPAY_ENABLED={prod['CINETPAY_ENABLED']} ≠ false"
+          assert prod["PAYMENT_MODE"] == "disabled", prod
+          assert prod["CINETPAY_ENABLED"] == "false", prod
           print("OK : production PAYMENT_MODE=disabled, CINETPAY_ENABLED=false")
-          PYEOF
+          '
 
       - name: "Vérification — aucun secret dans le dépôt"
         run: |
@@ -65,43 +65,9 @@ jobs:
             --exclude-dir=node_modules || {
               echo "!! Un secret semble committé" >&2; exit 1; }
 
-      # Secrets production : persistés dans le cache Actions, masqués.
-      # PAS de SIMULATION_SECRET en production.
-      - name: Cache des secrets production (valeurs masquées)
-        uses: actions/cache@v4
-        with:
-          path: .provision-secrets
-          key: production-secrets-v1
-
-      - name: Préparation des secrets production
-        id: secrets
-        run: |
-          mkdir -p .provision-secrets
-          if [[ ! -f .provision-secrets/production.json ]]; then
-            python3 - <<'PYEOF'
-            import json, secrets as pysecrets
-            with open(".provision-secrets/production.json", "w") as f:
-                json.dump({
-                    "PROD_DEVICE_ID_HMAC_SECRET": pysecrets.token_hex(32),
-                    "PROD_ADMIN_METRICS_TOKEN":   pysecrets.token_hex(32),
-                }, f)
-            PYEOF
-            echo "nouveaux secrets production générés"
-          else
-            echo "secrets production réutilisés depuis le cache"
-          fi
-          for k in PROD_DEVICE_ID_HMAC_SECRET PROD_ADMIN_METRICS_TOKEN; do
-            v=$(python3 -c "import json;print(json.load(open('.provision-secrets/production.json'))['$k'])")
-            echo "::add-mask::$v"
-            echo "$k=$v" >> "$GITHUB_OUTPUT"
-          done
-
-      # ------------------------------------------------------------------
-      # Sonde de droits : le token sait-il DÉPLOYER (Workers Scripts:Edit) ?
+      # Sonde : le token sait-il déployer (Workers Scripts:Edit) ?
       # PUT sans module : 400 = droit présent (rejet de validation, aucun
-      # effet), 403 = droit absent. Sans ce droit : D1 reste provisionnable
-      # mais le déploiement et l'E2E réseau sont sautés proprement.
-      # ------------------------------------------------------------------
+      # effet), 403 = droit absent → déploiement impossible, message clair.
       - name: "Sonde : droit de déploiement Workers"
         id: probe
         if: env.CF_TOKEN != ''
@@ -118,8 +84,32 @@ jobs:
             echo "droit de déploiement présent (sonde HTTP $CODE)"
           else
             echo "can_deploy=false" >> "$GITHUB_OUTPUT"
-            echo "droit de déploiement ABSENT (sonde HTTP $CODE) — déploiement sauté"
+            echo "!! Le token n'a pas le droit Workers Scripts:Edit — déploiement IMPOSSIBLE (ajouter la permission au token puis relancer)" >&2
           fi
+
+      # Secrets production : persistés dans le cache Actions, masqués.
+      # PAS de SIMULATION_SECRET en production.
+      - name: Cache des secrets production (valeurs masquées)
+        uses: actions/cache@v4
+        with:
+          path: .provision-secrets
+          key: production-secrets-v1
+
+      - name: Préparation des secrets production
+        id: secrets
+        run: |
+          mkdir -p .provision-secrets
+          if [[ ! -f .provision-secrets/production.json ]]; then
+            python3 -c "import json,secrets as s; json.dump({k:s.token_hex(32) for k in ('PROD_DEVICE_ID_HMAC_SECRET','PROD_ADMIN_METRICS_TOKEN')}, open('.provision-secrets/production.json','w'))"
+            echo "nouveaux secrets production générés"
+          else
+            echo "secrets production réutilisés depuis le cache"
+          fi
+          for k in PROD_DEVICE_ID_HMAC_SECRET PROD_ADMIN_METRICS_TOKEN; do
+            v=$(python3 -c "import json;print(json.load(open('.provision-secrets/production.json'))['$k'])")
+            echo "::add-mask::$v"
+            echo "$k=$v" >> "$GITHUB_OUTPUT"
+          done
 
       - name: Provision D1 production + migrations + secrets
         if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
@@ -142,13 +132,13 @@ jobs:
           curl -fsS --max-time 30 \
             https://vitrine-video-lite-api.mdgejcinfluence.workers.dev/health \
             -o health-prod.json
-          python3 - <<'PYEOF'
+          python3 -c '
           import json
           h = json.load(open("health-prod.json"))
           assert h["environment"] == "production", h
           assert h["payment_mode"] == "disabled", h
           print("OK : production en ligne, paiements désactivés :", h)
-          PYEOF
+          '
 
       - name: wrangler.jsonc canonique restauré
         if: always()

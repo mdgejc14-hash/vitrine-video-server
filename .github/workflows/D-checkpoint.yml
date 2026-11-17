@@ -30,11 +30,10 @@ jobs:
         id: preuves
         continue-on-error: true
         run: |
-          cat > .dev.vars <<'EOF'
-          DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef
-          ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef
-          SIMULATION_SECRET=test-simulation-secret-0123456789abcdef
-          EOF
+          printf '%s\n' \
+            "DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef" \
+            "ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef" \
+            "SIMULATION_SECRET=test-simulation-secret-0123456789abcdef" > .dev.vars
           npm run lint || echo "lint" >> quality-failures.txt
           npm run typecheck || echo "typecheck" >> quality-failures.txt
           set +e
@@ -62,19 +61,15 @@ jobs:
 
       - name: Rédaction du checkpoint
         run: |
-          python3 - <<'PYEOF'
+          python3 -c '
           import json, datetime, os, pathlib
           exit_code = pathlib.Path("test-exit.txt").read_text().strip()
           tests = {}
           if pathlib.Path("test-results.json").exists():
               r = json.loads(pathlib.Path("test-results.json").read_text())
-              tests = {
-                  "total": r.get("numTotalTests"),
-                  "passed": r.get("numPassedTests"),
-                  "failed": r.get("numFailedTests"),
-              }
+              tests = {"total": r.get("numTotalTests"), "passed": r.get("numPassedTests"), "failed": r.get("numFailedTests")}
           def probe(name):
-              p = pathlib.Path(f"health-{name}.json")
+              p = pathlib.Path("health-" + name + ".json")
               return json.loads(p.read_text()) if p.exists() else {"unreachable": True}
           failures = pathlib.Path("quality-failures.txt")
           cp = {
@@ -82,15 +77,14 @@ jobs:
               "repository": "mdgejc14-hash/vitrine-video-server",
               "commit": os.environ.get("GITHUB_SHA", "inconnu"),
               "quality_failures": failures.read_text().split() if failures.exists() else [],
-              "local_suite": {"exit_code": exit_code, **tests},
+              "local_suite": dict({"exit_code": exit_code}, **tests),
               "staging_health": probe("staging"),
               "production_health": probe("production"),
-              "note": "Checkpoint automatique — référence de reprise.",
+              "note": "Checkpoint automatique \u2014 reference de reprise.",
           }
-          pathlib.Path("CHECKPOINT_AUTOMATIQUE.json").write_text(
-              json.dumps(cp, indent=2, ensure_ascii=False))
+          pathlib.Path("CHECKPOINT_AUTOMATIQUE.json").write_text(json.dumps(cp, indent=2, ensure_ascii=False))
           print(json.dumps(cp, indent=2, ensure_ascii=False))
-          PYEOF
+          '
 
       - name: Archive du checkpoint (artefact, jamais de push main)
         uses: actions/upload-artifact@v4

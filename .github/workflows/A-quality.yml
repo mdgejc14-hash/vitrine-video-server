@@ -27,11 +27,10 @@ jobs:
       # runtime de test soit strictement identique local ↔ CI.
       - name: Constantes de test (.dev.vars)
         run: |
-          cat > .dev.vars <<'EOF'
-          DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef
-          ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef
-          SIMULATION_SECRET=test-simulation-secret-0123456789abcdef
-          EOF
+          printf '%s\n' \
+            "DEVICE_ID_HMAC_SECRET=test-hmac-secret-0123456789abcdef0123456789abcdef" \
+            "ADMIN_METRICS_TOKEN=test-admin-token-0123456789abcdef" \
+            "SIMULATION_SECRET=test-simulation-secret-0123456789abcdef" > .dev.vars
 
       - name: ESLint
         run: npm run lint
