@@ -74,17 +74,20 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
+          # Sonde STRICTE : multipart sans module. Un token autorisé obtient
+          # 400 (module manquant = validation APRÈS autorisation) ; un token
+          # sans droit obtient 403. Tout autre code (401/415/5xx/000) est
+          # traité comme ABSENCE de droit (prudence).
           CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            "https://api.cloudflare.com/client/v4/accounts/d7dac13da931423a19812f6d9116bd47/workers/scripts/vvl-perm-probe" \
-            -d '{"main_module":"index.js","compatibility_date":"2025-09-06"}')
-          if [[ "$CODE" != "403" && "$CODE" != "401" && "$CODE" != "000" ]]; then
+            -F 'metadata={"main_module":"index.js","compatibility_date":"2025-09-06"};type=application/json' \
+            "https://api.cloudflare.com/client/v4/accounts/d7dac13da931423a19812f6d9116bd47/workers/scripts/vvl-perm-probe")
+          if [[ "$CODE" == "400" ]]; then
             echo "can_deploy=true" >> "$GITHUB_OUTPUT"
             echo "droit de déploiement présent (sonde HTTP $CODE)"
           else
             echo "can_deploy=false" >> "$GITHUB_OUTPUT"
-            echo "!! Le token n'a pas le droit Workers Scripts:Edit — déploiement IMPOSSIBLE (ajouter la permission au token puis relancer)" >&2
+            echo "!! Le token n'a pas le droit Workers Scripts:Edit — déploiement IMPOSSIBLE (sonde HTTP $CODE ; ajouter la permission au token puis relancer)" >&2
           fi
 
       # Secrets production : persistés dans le cache Actions, masqués.
