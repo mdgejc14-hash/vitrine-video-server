@@ -176,6 +176,25 @@ jobs:
           SIMULATION_SECRET: ${{ steps.secrets.outputs.SIMULATION_SECRET }}
         run: ./scripts/provision.sh --secrets --only staging
 
+      # L'URL workers.dev n'est pas utilisable à l'instant même du
+      # déploiement (propagation de quelques dizaines de secondes) :
+      # attendre /health avant l'E2E (jusqu'à 3 minutes).
+      - name: "Attente de la mise en ligne (/health)"
+        if: env.CF_TOKEN != '' && steps.probe.outputs.can_deploy == 'true'
+        run: |
+          for i in $(seq 1 36); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+              https://vitrine-video-lite-api-staging.mdgejcinfluence.workers.dev/health || echo 000)
+            if [[ "$CODE" == "200" ]]; then
+              echo "Worker staging en ligne après $((i*5)) s"
+              exit 0
+            fi
+            echo "attente ($((i*5)) s, HTTP $CODE)"
+            sleep 5
+          done
+          echo "!! Worker staging toujours injoignable après 3 minutes" >&2
+          exit 1
+
       # ------------------------------------------------------------------
       # E2E réseau : scénarios rejoués en HTTP réel (terminaux de test
       # dédiés e2e-test-*, aucune donnée réelle). Tests 7/9/11 (expirations
