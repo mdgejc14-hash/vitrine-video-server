@@ -21,10 +21,15 @@ vivant, et une **CI GitHub opérationnelle** (workflows A, B, D exécutés).
 - e2e distant : variante stricte du Test 6 ajoutée (gratuits épuisés
   avant achat → 6 payants puis 7e refusé) + réalité « 9 si gratuits
   restants » ; pré-vérification HTTP locale 15/15 ;
-- runs B #7 et B #8 : la sonde du jeton du secret Actions renvoie
+- runs B #7-B #10 : la sonde du jeton du secret Actions renvoie
   **403** sur le dépôt de script ; batterie de diagnostic exécutée :
   le jeton a Workers Scripts **Read** mais pas **Edit** (carte
   identique à l'ancien jeton) → **déploiement toujours BLOQUÉ** (§5) ;
+- **défaut applicatif découvert par A #9 et corrigé** : course même clé
+  (8 concurrents, 3 débits sérialisés avant l'insertion du gagnant →
+  402 parasites). Correctif `3e0845d` : re-vérification bornée (5×25 ms)
+  dans le chemin d'échec du débit → replay si le gagnant insère.
+  Preuve : scenario02 ×15 verts, A #10 vert ;
 - **reste UN seul verrou** : « Workers Scripts:Edit » sur le jeton du
   secret, ou mise à jour du secret avec le jeton corrigé.
 

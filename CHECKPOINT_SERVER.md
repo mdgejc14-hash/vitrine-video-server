@@ -1,12 +1,12 @@
 # CHECKPOINT_SERVER.md — Point de contrôle (référence de reprise)
 
 > Mission : backend Cloudflare VITRINE VIDÉO LITE (serveur uniquement).
-> Date du point : **17/11/2026** (matin, après instruction maîtresse de
-> reprise). État : **documentation alignée sur la planche officielle des
-> 14 écrans ; tests locaux 64/64 + pré-vérification HTTP 15/15 ; CI
-> A #7/#8 et B #7/#8 vertes ; déploiement Worker TOUJOURS BLOQUÉ : le
-> jeton du secret Actions n'a pas « Workers Scripts:Edit » (diagnostiqué
-> par batterie d'API, deux runs consécutifs).**
+> Date du point : **17/11/2026** (matinée, HEAD `3e0845d`).
+> État : **documentation alignée sur la planche officielle 14 écrans ;
+> 64/64 tests + concurrence ×15 ; défaut de course A #9 corrigé ;
+> CI verte (A #10, B #10, D #2) ; déploiement Worker BLOQUÉ : le jeton
+> du secret Actions n'a pas « Workers Scripts:Edit » (batterie d'API,
+> 2 runs consécutifs — voir §Blocage).**
 
 ## Comptes EXACTS au point de contrôle
 
@@ -22,7 +22,9 @@
 | Workflows | **4** (A/B/C/D), YAML validés, garde anti-fork sur B/C/D |
 | Scripts | **2** (`provision.sh`, `e2e-runner.sh`), syntaxe bash + Python embarqué validées |
 | Migrations SQL | **1** (`0001_init.sql`, 16 commandes, 7 tables) |
-| Commits Git (local = distant) | 6 commits, `main` = 9abb388 |
+| Commits Git (local = distant) | 12 commits, `main` = 3e0845d |
+| Runs CI (17/11 matin) | A #7 ✓ #8 ✓ #9 **FAIL (course, corrigée)** #10 ✓ · B #7-#10 ✓ (tests réels, déploiement sauté à juste titre) · D #2 ✓ artefact |
+| Preuve anti-course | scenario02 complet **×15 verts** après correctif (105 exécutions) |
 | Dépôt GitHub | **créé** `mdgejc14-hash/vitrine-video-server` (public) |
 | D1 distantes | staging `44694796-…812d`, production `17e6a5cf-…7fa2` — 7 tables métier vérifiées chacune |
 | CI GitHub | A : 5/5 succès · B : run #5 succès (tests réels + saut honnête) · D : 1/1 succès + artefact · C : non déclenché (réservé fondateur) |
@@ -107,12 +109,25 @@ Ressources existantes : **rien n'a été touché** — ancien worker vérifié
 vivant (`/health` → v0.9.1-d42.23), anciennes D1 intactes à
 l'inventaire, aucune écriture dessus.
 
+## Défaut applicatif corrigé (A #9 — classe : DÉFAUT APPLICATIF)
+
+Run A #9 : Test 3 (8 requêtes concurrentes même clé) → « expected 2 to
+7 » : séquence possible = 3 débits sérialisés (3→0) AVANT l'insertion du
+gagnant → 5 fausses 402 au lieu de replays. La garantie « exactement un
+débit » tenait (compensations), mais des 402 parasites n'étaient pas
+acceptables. **Correctif** (`3e0845d`) : chemin d'échec du débit =
+re-vérification BORNÉE de l'autorisation même clé (5×25 ms) → replay si
+le gagnant insère, 402 authentique sinon. Les courses à clés différentes
+restent 1×201 + N×402 (test « dernier crédit » inchangé et vert).
+**Preuve** : scenario02 ×15 runs verts + A #10 vert.
+
 ## Reprise — prochaine action
 
-- **Permission ajoutée au jeton** : onglet Actions → workflow **B**
-  « Run workflow » (déploie staging + E2E réseau 15 scénarios), puis
-  workflow **C** avec confirmation « DEPLOYER » (production, paiements
-  désactivés), puis **D** (checkpoint). Vérifier `main` = 9abb388 avant.
-- **Historique CI utile** : runs A #1-#5 (succès), B #5 (succès, tests
-  réels, déploiement sauté — sondes 403), B #1-#4 (défauts workflow
-  corrigés : heredocs/sonde/bits), D #1 (succès + artefact checkpoint-1).
+- **Permission corrigée sur le jeton (ou secret mis à jour)** : onglet
+  Actions → workflow **B** « Run workflow » (déploie staging + E2E
+  distant 15 scénarios), puis bilan staging, puis workflow **C** avec
+  confirmation « DEPLOYER ». Vérifier `main` = 3e0845d avant.
+- **Historique CI utile** : A #1-#8, #10 ✓ ; A #9 FAIL (course, corrigée
+  par 3e0845d) ; B #5-#10 ✓ (tests réels, déploiement sauté — sonde
+  403 documentée) ; B #1-#4 (défauts workflow corrigés : heredocs/sonde/
+  bits) ; D #1-#2 ✓ (artefacts checkpoint-1/2).
